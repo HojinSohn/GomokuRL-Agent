@@ -1,0 +1,81 @@
+from collections import deque
+
+import numpy as np
+from model import Model
+import torch
+from torch import nn
+import random
+from gui_play import GUI
+
+class DQNAgent():
+    def __init__(self):
+        self.model1 = Model()
+        self.target_model1 = Model()
+        self.memory1 = deque(maxlen=2000)
+
+        self.model2 = Model()
+        self.target_model2 = Model()
+        self.memory2 = deque(maxlen=2000)
+
+        self.gamma = 0.99
+        self.epsilon = 1.0
+        self.epsilon_min = 0.01
+        self.epsilon_decay = 0.99
+        self.batch_size = 8
+        self.learning_rate = 0.001
+
+        self.criterion = nn.MSELoss()
+
+    def get_action(self, state, turn : int):
+        if torch.rand(1).item() < self.epsilon:
+            # Exploration: choose a random action
+            # currently returns a random action from the action space
+            return torch.randint(0, 15 * 15, (1,)).item()
+        else:
+            # Exploitation: choose the best action from the model
+            with torch.no_grad():
+                if turn == 1:
+                    state_np = np.array(state[turn])
+                    states_tensor = torch.tensor(state_np, dtype=torch.float).unsqueeze(0).unsqueeze(0)
+                    q_values = self.model1(states_tensor)
+                else :
+                    # turn == -1
+                    state_np = np.array(state[turn])
+                    states_tensor = torch.tensor(state_np, dtype=torch.float).unsqueeze(0).unsqueeze(0)
+                    q_values = self.model2(states_tensor)
+                action = torch.argmax(q_values).item()
+            return action
+
+    def save_sample(self, data, turn : int):
+        if turn == 0:
+            self.memory1.append(data)
+        else:
+            self.memory2.append(data)
+
+    def save_model(self):
+        torch.save(self.model1.state_dict(), 'models/model1.pth')
+        torch.save(self.model2.state_dict(), 'models/model2.pth')
+        print("Models saved.")
+
+    def train_model(self, model, target_model, memory, done):
+        if len(memory) < self.batch_size:
+            return
+        
+        sample = random.sample(memory, self.batch_size)
+        states, actions, rewards, next_states, dones = zip(*sample)
+
+        # (32, 15, 15) -> (32, 1, 15, 15)
+        states_np = np.array(states)
+        states_tensor = torch.tensor(states_np, dtype=torch.float).unsqueeze(1)
+        q_inference = model(states_tensor).gather(1, torch.tensor(actions).unsqueeze(1))
+        q_inference = q_inference.squeeze(1)  # (32, 1) -> (32,)
+        next_states_np = np.array(next_states)
+        next_states_tensor = torch.tensor(next_states_np, dtype=torch.float).unsqueeze(1)
+        q_next = target_model(next_states_tensor).detach().max(1)[0]
+        q_target = torch.tensor(rewards, dtype=torch.float) + self.gamma * q_next
+        loss = self.criterion(q_inference, q_target)
+        # print("Loss:", loss.item())
+        model.backward(loss)
+
+    def update_target(self, model, target_model):
+        print("Not implemented: update_target")
