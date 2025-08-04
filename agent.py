@@ -10,11 +10,11 @@ from gui_play import GUI
 class DQNAgent():
     def __init__(self):
         self.model1 = Model()
-        self.target_model1 = Model()
+        self.target_model1.load_state_dict(self.model1.state_dict())
         self.memory1 = deque(maxlen=2000)
 
         self.model2 = Model()
-        self.target_model2 = Model()
+        self.target_model2.load_state_dict(self.model2.state_dict())
         self.memory2 = deque(maxlen=2000)
 
         self.gamma = 0.99
@@ -78,4 +78,9 @@ class DQNAgent():
         model.backward(loss)
 
     def update_target(self, model, target_model):
-        print("Not implemented: update_target")
+        '''
+            This function updates the target model with the weights of the current model.
+            It is called periodically to keep the target model in sync with the current model.
+        '''
+        target_model.load_state_dict(model.state_dict())
+        print("Target model updated.")
