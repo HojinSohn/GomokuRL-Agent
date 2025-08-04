@@ -10,10 +10,12 @@ from gui_play import GUI
 class DQNAgent():
     def __init__(self):
         self.model1 = Model()
+        self.target_model1 = Model()
         self.target_model1.load_state_dict(self.model1.state_dict())
         self.memory1 = deque(maxlen=2000)
 
         self.model2 = Model()
+        self.target_model2 = Model()
         self.target_model2.load_state_dict(self.model2.state_dict())
         self.memory2 = deque(maxlen=2000)
 

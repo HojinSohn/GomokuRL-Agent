@@ -1,4 +1,5 @@
 models/
 *.pth
 __pycache__/
-venv/
+myenv/
+.DS_Store
