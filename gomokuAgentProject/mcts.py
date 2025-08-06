@@ -1,26 +1,44 @@
 # Node class for Tree Search
 import numpy as np
-
-
+import copy
 class Node:
-    def __init__(self, element, parent=None, move=None):
-        self.element = element
+    def __init__(self, current_player, parent=None, move=None):
         self.parent = parent
         self.children = []
         self.visits = 0
         self.wins = 0.0
         self.move = move
+        self.moves = (parent.moves + [move] if parent else [move]) if move is not None else []
+        self.current_player = current_player
 
     def ucb1(self):
         if self.visits == 0:
             return float('inf')
-        return self.wins / self.visits + (2 * np.log(self.parent.visits) / self.visits) ** 0.5
+        return self.wins / self.visits + np.sqrt((2 * np.log(self.parent.visits)) / self.visits)
 
 
 class MCTS:
-    def __init__(self, iterations=5000):
+    def __init__(self, iterations=10):
         self.iterations = iterations
 
+    def get_current_player(self, board):
+        """Determine whose turn it is based on piece count"""
+        count_1 = np.sum(board == 1)
+        count_neg1 = np.sum(board == -1)
+        return 1 if count_1 <= count_neg1 else -1
+
+    def apply_moves_to_board(self, board, moves, initial_player):
+        """Apply a sequence of moves to a board, alternating players"""
+        current_board = copy.deepcopy(board)
+        
+        for i, move in enumerate(moves):
+            if move is not None:
+                row, col = move
+                # Alternate players: initial_player, then -initial_player, etc.
+                player = initial_player if i % 2 == 0 else -initial_player
+                current_board[row][col] = player
+        return current_board
+    
     def traverse(self, node):
         '''
             This function traverses the tree from the element node to a leaf node,
@@ -30,67 +48,165 @@ class MCTS:
             @return: Leaf node after traversing down the tree
         '''
         while node.children:
-            node = max(node.children, key=lambda n: self.get_ucb1(n))
+            node = max(node.children, key=lambda n: n.ucb1())
         return node
-    
-    def get_promising_moves(self, board):
+
+    def get_good_moves(self, board, current_player):
         '''
             This function generates promising moves based on the current board state.
-            It should return a list of promising moves.
+            Prioritizes critical moves and returns up to 10 most promising positions.
 
             @param board: Current board state (2d array) 15 x 15. 0 = empty, 1 = player, -1 = opponent
-            @return: List of promising moves
+            @param current_player: Current player (1 or -1)
+            @return: List of up to 10 promising moves, prioritized by importance
         '''
-        # Implement logic to find promising moves based on the current board state
-        '''
-        1. For any open four consecutive pieces of the opponent.
-        2. For any open three consecutive pieces of the opponent.
-        3. For any open three consecutive pieces of the player.
-        4. For any open four consecutive pieces of the player.
-        5. Any other cells that are adjacent to existing pieces. (at most 4 cells away)
-        '''
-        promising_moves = []
-        
+        # Priority sets for different move types
+        direct_win_moves = set()  # Direct winning moves = open four for player
+        direct_block_moves = set()  # Add stone to block opponent's open four / half open four
+        indirect_win_moves = set()  # Add one stone to make open four in a row ==> win
+        defend_moves = set()  # open three in a row for opponent / need to block to prevent opponent's win
+
         direction_vectors = [
-                (1, 0),   # vertical
-                (0, 1),   # horizontal
-                (1, 1),   # diagonal down-right
-                (-1, 1),  # diagonal up-right
-            ]
-        sequence_length = 4
+            (1, 0),   # vertical
+            (0, 1),   # horizontal
+            (1, 1),   # diagonal down-right
+            (1, -1),  # diagonal down-left
+        ]
 
+        # Check all positions and directions for patterns
         for i in range(15):
             for j in range(15):
+                if board[i][j] == 0:  # Only check empty positions
+                    continue
+                    
+                player = board[i][j]
+                
                 for dx, dy in direction_vectors:
-                    for k in [1, -1]:
-                        if all(0 <= i + dx * n < 15 and 0 <= j + dy * n < 15 and board[i + dx * n][j + dy * n] == k for n in range(sequence_length)):
-                            if i + dx * sequence_length < 15 and j + dy * sequence_length < 15 and board[i + dx * sequence_length][j + dy * sequence_length] == 0:
-                                promising_moves.append((i + dx * sequence_length, j + dy * sequence_length))
-                            if i - dx >= 0 and j - dy >= 0 and board[i - dx][j - dy] == 0:
-                                promising_moves.append((i - dx * sequence_length, j - dy * sequence_length))
-                        elif all(0 <= i + dx * n < 15 and 0 <= j + dy * n < 15 and board[i + dx * n][j + dy * n] == k for n in range(sequence_length - 1)):
-                            if i + dx * (sequence_length - 1) < 15 and j + dy * (sequence_length - 1) < 15 and board[i + dx * (sequence_length - 1)][j + dy * (sequence_length - 1)] == 0:
-                                promising_moves.append((i + dx * (sequence_length - 1), j + dy * (sequence_length - 1)))
-                            if i - dx >= 0 and j - dy >= 0 and board[i - dx][j - dy] == 0:
-                                promising_moves.append((i - dx * (sequence_length - 1), j - dy * (sequence_length - 1)))
+                    block_before = False
+                    bx, by = i - dx, j - dy
+                    if 0 <= bx < 15 and 0 <= by < 15 and board[bx][by] == player:
+                        continue  # Since the previous position is occupied by the same player, no need to check further
 
-        # add any other cells that are adjacent to existing pieces
-        # This is a heuristic to find promising moves
-        # It will add any cell that is adjacent to an existing piece
-        visited = [[False] * 15 for _ in range(15)]
+                    if 0 > bx or bx >= 15 or 0 > by or by >= 15 or board[bx][by] == -player:
+                        block_before = True
+
+                    # Count consecutive pieces in this direction
+                    three_open = False
+                    count = 1  # Count the current piece
+                    # check four in a row / or four in a row with one empty space
+                    for k in range(1, 5):
+                        nx, ny = i + dx * k, j + dy * k
+                        if 0 <= nx < 15 and 0 <= ny < 15 and board[nx][ny] == player:
+                            count += 1
+                            if count == 4:
+                                break
+                        elif 0 > nx or nx >= 15 or 0 > ny or ny >= 15 or board[nx][ny] == -player:
+                            count = -1  # Blocked by opponent
+                            break
+                        else:
+                            if count == 3 and not block_before:
+                                # If we have three in a row and the next is empty, it's a good move
+                                three_open = True
+
+                    if count == 4:
+                        # If we have four in a row, but need to check the end of the row
+
+                        # check if the prev position is empty
+                        if not block_before:
+                            # check if the stone should be placed in the middle of the four
+                            put_in_the_middle = False
+                            for n in range(1, 4):  # Check four steps away
+                                nx, ny = i + dx * n, j + dy * n
+                                if 0 <= nx < 15 and 0 <= ny < 15 and board[nx][ny] == 0:
+                                    if player == current_player:
+                                        direct_win_moves.add((nx, ny))
+                                    else:
+                                        direct_block_moves.add((nx, ny))
+                                    put_in_the_middle = True
+                        
+                            if not put_in_the_middle:
+                                # Add the position before the four
+                                if player == current_player:
+                                    direct_win_moves.add((i - dx, j - dy))
+                                else:
+                                    direct_block_moves.add((i - dx, j - dy))
+                                
+                                # Add the position after the four
+                                nx, ny = i + dx * 4, j + dy * 4
+                                if 0 <= nx < 15 and 0 <= ny < 15 and board[nx][ny] == 0:
+                                    if player == current_player:
+                                        direct_win_moves.add((nx, ny))
+                                    else:
+                                        direct_block_moves.add((nx, ny))
+                        else:
+                            # If we have four in a row and the next is blocked, 
+                            # check if the stone should be placed in the middle of the four
+                            put_in_the_middle = False
+                            for n in range(1, 4):  # Check four steps away
+                                nx, ny = i + dx * n, j + dy * n
+                                if 0 <= nx < 15 and 0 <= ny < 15 and board[nx][ny] == 0:
+                                    if player == current_player:
+                                        direct_win_moves.add((nx, ny))
+                                    else:
+                                        direct_block_moves.add((nx, ny))
+                                    put_in_the_middle = True
+                            if not put_in_the_middle:
+                                # Cannot add the position before the four since its blocked
+                                # Add the position after the four
+                                nx, ny = i + dx * 4, j + dy * 4
+                                if 0 <= nx < 15 and 0 <= ny < 15 and board[nx][ny] == 0:
+                                    if player == current_player:
+                                        direct_win_moves.add((nx, ny))
+                                    else:
+                                        direct_block_moves.add((nx, ny))
+
+                    if three_open:
+                        put_in_the_middle = False
+                        for n in range(1, 4):  # Check three steps away
+                            nx, ny = i + dx * n, j + dy * n
+                            if 0 <= nx < 15 and 0 <= ny < 15 and board[nx][ny] == 0:
+                                # If we have three in a row, it's a good move
+                                if player == current_player:
+                                    indirect_win_moves.add((nx, ny)) 
+                                else:
+                                    defend_moves.add((nx, ny))
+                                put_in_the_middle = True
+                        if not put_in_the_middle:
+                            # If we have three in a row, it's a good move
+                            if player == current_player:
+                                indirect_win_moves.add((i - dx, j - dy)) # Before the three
+                            else:
+                                defend_moves.add((i - dx, j - dy))
+        print("Turn: ", current_player, " Direct win moves:", direct_win_moves)
+        print("Turn: ", current_player, " Direct block moves:", direct_block_moves)
+        if direct_win_moves:
+            # If we have open four positions, return them
+            return list(direct_win_moves)
+        if direct_block_moves:
+            # If we have open three positions, return them
+            return list(direct_block_moves)
+        
+        if indirect_win_moves:
+            # If we have indirect win positions, return them
+            return list(indirect_win_moves)
+
+        if defend_moves:
+            # If we have defend positions, return them
+            return list(defend_moves)
+        
+        good_moves = set()
+
+        # If good moves are not found, return random empty positions
         for i in range(15):
             for j in range(15):
-                # If the cell is occupied, check its neighbors
                 if board[i][j] != 0:
-                    for dx in [-2, -1, 0, 1, 2]:
-                        for dy in [-2, -1, 0, 1, 2]:
-                            if dx == 0 and dy == 0:
-                                continue
-                            ni, nj = i + dx, j + dy
-                            if not visited[ni][nj] and 0 <= ni < 15 and 0 <= nj < 15 and board[ni][nj] == 0:
-                                visited[ni][nj] = True
-                                promising_moves.append((ni, nj)) 
-        return promising_moves
+                    # add adjacent empty positions
+                    for dx, dy in direction_vectors:
+                        for n in range(1, 3):  # Check two steps away
+                            nx, ny = i + dx * n, j + dy * n
+                            if 0 <= nx < 15 and 0 <= ny < 15 and board[nx][ny] == 0:
+                                good_moves.add((nx, ny))
+        return list(good_moves)
 
     def expand(self, node):
         '''
@@ -99,19 +215,14 @@ class MCTS:
 
             @param node: Leaf node (board state) to expand
         '''
-        # Implement logic to generate 10 promising moves based on the current board state
-        for _ in range(10):
-            # Here apply a random legal move to new_board
-            # Heuristically, find 10 promising moves
-            promising_moves = self.get_promising_moves(new_board)
-            for move in promising_moves:
-                new_board = np.copy(node.element)
-                # Apply the move to the new board state
-                new_board[move[0]][move[1]] = 1
-                # Update the child node's element to the new board state
-                child_node.element = new_board
-                child_node = Node(element=new_board, parent=node, move=move)
-                node.children.append(child_node)
+        # Apply moves to get current board state
+        board = self.apply_moves_to_board(self.board, node.moves, initial_player=self.root.current_player)
+        promising_moves = self.get_good_moves(board, current_player=node.current_player)
+        promising_moves = np.random.permutation(promising_moves)  # Shuffle the promising moves to add some randomness
+
+        for move in promising_moves[:5]:  # Take first 5
+            child_node = Node(current_player=-node.current_player, parent=node, move=move)
+            node.children.append(child_node)
 
     def check_winner(self, board):
         '''
@@ -136,10 +247,10 @@ class MCTS:
                     for k in [1, -1]:
                         try:
                             if all(0 <= i + dx * n < 15 and 0 <= j + dy * n < 15 and board[i + dx * n][j + dy * n] == k for n in range(sequence_length)):
-                                return True
+                                return k
                         except IndexError:
                             continue
-        return False
+        return None  # No winner found
         
     def rollout(self, node):
         '''
@@ -148,31 +259,51 @@ class MCTS:
 
             @param node: Leaf node (board state) to simulate
         '''
-        # Implement logic to simulate a random game from the current board state
-        # For simplicity, we can just randomly select moves until the game ends
-        # deep copy the board state
-        current_board = np.copy(node.element)
-        while True:
+        # Get current board state by applying moves
+        current_board = self.apply_moves_to_board(self.board, node.moves, initial_player=self.root.current_player)
+
+        # Determine whose turn it is next
+        current_player = node.current_player
+
+        # Start the simulation
+        result = 0.0
+        MAX_SIMULATION_STEPS = 1  # Limit the number of steps to prevent infinite loops
+        for _ in range(MAX_SIMULATION_STEPS):
             # Randomly select a move
-            valid_moves = [(i, j) for i in range(15) for j in range(15) if current_board[i][j] == 0]
+            valid_moves = self.get_good_moves(current_board, current_player)
             if not valid_moves:
+                # draw
+                result = 0.5
                 break
-            move = np.random.choice(len(valid_moves))
-            current_board[valid_moves[move][0]][valid_moves[move][1]] = 1  # Assume player 1 is making the move
+            random_index = np.random.randint(len(valid_moves))
+            row, col = valid_moves[random_index]
+            current_board[row][col] = current_player
             # Check if the game is completed
-            if self.check_winner(current_board):
-                node.wins += 1
-                node.visits += 1
-            # Switch to the other player
-            current_board[valid_moves[move][0]][valid_moves[move][1]] = -1  # Assume player -1 is making the move
+            winner = self.check_winner(current_board)
+            if winner is not None:
+                result = 1 if winner == current_player else -1
+                break
+            # Randomly select a move for the opponent
+            valid_moves = self.get_good_moves(current_board, -1 * current_player)
+            if not valid_moves:
+                # draw
+                result = 0.5
+                break
+            random_index = np.random.randint(len(valid_moves))
+            row, col = valid_moves[random_index]
+            current_board[row][col] = -1 * current_player
             # Check if the game is completed
-            if self.check_winner(current_board):
-                node.wins -= 1
-                node.visits += 1
+            winner = self.check_winner(current_board)
+            if winner is not None:
+                result = 1 if winner == current_player else -1
+                break
+        node.visits += 1
+        node.wins += result
         # traverse back up the tree and update the visit counts and wins
         while node.parent is not None:
             node.parent.visits += 1
-            node.parent.wins += node.wins
+            result = -1 * result  # Invert the result for the parent node
+            node.parent.wins += result
             node = node.parent
         
 
@@ -192,11 +323,14 @@ class MCTS:
         5. Repeat this select → expand → simulate → backpropagate process for many iterations.
         6. After a set number of iterations, select the child node with the highest visit count as the best action.
         '''
-        root = Node(element=board)
-
-        for _ in range(self.iterations):
+        self.board = board  # Update the board state
+        current_player = self.get_current_player(self.board)
+        self.root = Node(current_player=current_player, parent=None, move=None)  # Reset the root node with the current board state
+        for it in range(self.iterations):
+            if it % 100 == 0:
+                print("Iteration:", it)
             # traverse down the tree to a leaf node
-            leaf_node = self.traverse(root)
+            leaf_node = self.traverse(self.root)
             if leaf_node.visits > 0:
                 # If the leaf node has been visited before, expand it
                 self.expand(leaf_node)
@@ -210,7 +344,7 @@ class MCTS:
                 self.rollout(leaf_node)
         
         # After all iterations, select the child node with the highest visit count
-        best_child = max(root.children, key=lambda n: n.visits)
+        best_child = max(self.root.children, key=lambda n: n.visits)
         # Convert the best child's element (board state) to an action
         best_action = best_child.move
         if best_action is None:

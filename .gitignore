@@ -3,3 +3,4 @@ models/
 __pycache__/
 myenv/
 .DS_Store
+*.vscode

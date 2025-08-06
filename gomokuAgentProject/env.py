@@ -1,6 +1,6 @@
 import numpy as np
 
-rewards = {"win" : 10.0, "lose" : -10.0, "step" : 0.0001, "invalid" : -0.1}
+rewards = {"win" : 10.0, "lose" : -10.0, "step" : 0.0001, "invalid" : -5.0}
 
 class GomokuEnv:
     def __init__(self):
@@ -36,8 +36,6 @@ class GomokuEnv:
                     for k in [1, -1]:
                         try:
                             if all(0 <= i + dx * n < self.size and 0 <= j + dy * n < self.size and self.state[0][i + dx * n][j + dy * n] == k for n in range(sequence_length)):
-                                print(f"Player {k} wins!")
-                                print(f"Winning sequence starts at ({i}, {j}) in direction ({dx}, {dy})")
                                 return True
                         except IndexError:
                             continue

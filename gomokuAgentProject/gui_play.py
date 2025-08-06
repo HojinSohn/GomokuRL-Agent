@@ -19,6 +19,9 @@ class GUI:
         pygame.init()
         self.screen = pygame.display.set_mode((WINDOW_SIZE, WINDOW_SIZE))
         pygame.display.set_caption("Gomoku")
+        self.CELL_SIZE = CELL_SIZE
+        self.BOARD_SIZE = BOARD_SIZE
+        self.MARGIN = MARGIN
 
     def draw_board(self, state):
         self.screen.fill(WOOD)
