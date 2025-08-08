@@ -19,7 +19,7 @@ class Node:
 
 
 class MCTS:
-    def __init__(self, iterations=50):
+    def __init__(self, iterations=10):
         self.iterations = iterations
 
     def get_current_player(self, board):
@@ -111,7 +111,174 @@ class MCTS:
                         good_moves.add(top_right)
                         good_moves.add(bottom_left)
 
+        def check_detached_patterns():
+            """Check for detached patterns using vectorized numpy operations for speed"""
+            
+            # Define the two patterns we're looking for
+            pattern1 = np.array([0, player, 0, player, player, 0])  # _X_XX_
+            pattern2 = np.array([0, player, player, 0, player, 0])  # _XX_X_
+            
+            def find_pattern_matches(segments, pattern):
+                """Vectorized pattern matching"""
+                return np.all(segments == pattern, axis=-1)
+            
+            def check_horizontal_detached():
+                if board.shape[1] < 6:
+                    return
+                    
+                # Extract all horizontal 6-segments
+                segments = []
+                positions = []
+                for r in range(board.shape[0]):
+                    for c in range(board.shape[1] - 5):
+                        segment = board[r, c:c+6]
+                        segments.append(segment)
+                        positions.append((r, c))
+                
+                if not segments:
+                    return
+                    
+                segments = np.array(segments)
+                
+                # Find matches for both patterns
+                matches1 = find_pattern_matches(segments, pattern1)
+                matches2 = find_pattern_matches(segments, pattern2)
+                
+                # Add good moves for pattern 1: _X_XX_
+                for i, match in enumerate(matches1):
+                    if match:
+                        r, c = positions[i]
+                        good_moves.add((r, c))      # First empty
+                        good_moves.add((r, c+2))    # Middle empty  
+                        good_moves.add((r, c+5))    # Last empty
+                
+                # Add good moves for pattern 2: _XX_X_
+                for i, match in enumerate(matches2):
+                    if match:
+                        r, c = positions[i]
+                        good_moves.add((r, c))      # First empty
+                        good_moves.add((r, c+3))    # Middle empty
+                        good_moves.add((r, c+5))    # Last empty
+            
+            def check_vertical_detached():
+                if board.shape[0] < 6:
+                    return
+                    
+                # Extract all vertical 6-segments
+                segments = []
+                positions = []
+                for r in range(board.shape[0] - 5):
+                    for c in range(board.shape[1]):
+                        segment = board[r:r+6, c]
+                        segments.append(segment)
+                        positions.append((r, c))
+                
+                if not segments:
+                    return
+                    
+                segments = np.array(segments)
+                
+                # Find matches for both patterns
+                matches1 = find_pattern_matches(segments, pattern1)
+                matches2 = find_pattern_matches(segments, pattern2)
+                
+                # Add good moves for pattern 1: _X_XX_
+                for i, match in enumerate(matches1):
+                    if match:
+                        r, c = positions[i]
+                        good_moves.add((r, c))      # First empty
+                        good_moves.add((r+2, c))    # Middle empty  
+                        good_moves.add((r+5, c))    # Last empty
+                
+                # Add good moves for pattern 2: _XX_X_
+                for i, match in enumerate(matches2):
+                    if match:
+                        r, c = positions[i]
+                        good_moves.add((r, c))      # First empty
+                        good_moves.add((r+3, c))    # Middle empty
+                        good_moves.add((r+5, c))    # Last empty
+            
+            def check_diagonal_detached():
+                if board.shape[0] < 6 or board.shape[1] < 6:
+                    return
+                    
+                # Extract all main diagonal 6-segments
+                segments = []
+                positions = []
+                for r in range(board.shape[0] - 5):
+                    for c in range(board.shape[1] - 5):
+                        segment = np.array([board[r+i, c+i] for i in range(6)])
+                        segments.append(segment)
+                        positions.append((r, c))
+                
+                if not segments:
+                    return
+                    
+                segments = np.array(segments)
+                matches1 = find_pattern_matches(segments, pattern1)
+                matches2 = find_pattern_matches(segments, pattern2)
+                
+                # Add good moves for pattern 1: _X_XX_
+                for i, match in enumerate(matches1):
+                    if match:
+                        r, c = positions[i]
+                        good_moves.add((r, c))          # First empty
+                        good_moves.add((r+2, c+2))      # Middle empty  
+                        good_moves.add((r+5, c+5))      # Last empty
+                
+                # Add good moves for pattern 2: _XX_X_
+                for i, match in enumerate(matches2):
+                    if match:
+                        r, c = positions[i]
+                        good_moves.add((r, c))          # First empty
+                        good_moves.add((r+3, c+3))      # Middle empty
+                        good_moves.add((r+5, c+5))      # Last empty
+            
+            def check_anti_diagonal_detached():
+                if board.shape[0] < 6 or board.shape[1] < 6:
+                    return
+                    
+                # Extract all anti-diagonal 6-segments
+                segments = []
+                positions = []
+                for r in range(board.shape[0] - 5):
+                    for c in range(5, board.shape[1]):
+                        segment = np.array([board[r+i, c-i] for i in range(6)])
+                        segments.append(segment)
+                        positions.append((r, c))
+                
+                if not segments:
+                    return
+                    
+                segments = np.array(segments)
+                matches1 = find_pattern_matches(segments, pattern1)
+                matches2 = find_pattern_matches(segments, pattern2)
+                
+                # Add good moves for pattern 1: _X_XX_
+                for i, match in enumerate(matches1):
+                    if match:
+                        r, c = positions[i]
+                        good_moves.add((r, c))          # First empty
+                        good_moves.add((r+2, c-2))      # Middle empty  
+                        good_moves.add((r+5, c-5))      # Last empty
+                
+                # Add good moves for pattern 2: _XX_X_
+                for i, match in enumerate(matches2):
+                    if match:
+                        r, c = positions[i]
+                        good_moves.add((r, c))          # First empty
+                        good_moves.add((r+3, c-3))      # Middle empty
+                        good_moves.add((r+5, c-5))      # Last empty
+            
+            check_horizontal_detached()
+            check_vertical_detached() 
+            check_diagonal_detached()
+            check_anti_diagonal_detached()
+        
+        check_detached_patterns()
+        
         return list(good_moves)
+
     
     def detect_open_four(self, board, player):
         kernel_h = np.array([[1, 1, 1, 1]])
@@ -178,6 +345,53 @@ class MCTS:
                         if empty_mask[bottom_left]:
                             good_moves.add(bottom_left)
 
+        # detached patterns
+        kernel_h = np.array([[1, 1, 1, 1, 1]])
+        kernel_v = kernel_h.T
+        kernel_d1 = np.eye(5, dtype=int)
+        kernel_d2 = np.fliplr(kernel_d1)
+
+        # Horizontal
+        conv_h = convolve2d(board, kernel_h, mode='valid')
+        for r in range(conv_h.shape[0]):
+            for c in range(conv_h.shape[1]):
+                if conv_h[r, c] == 4 * player:
+                    for offset in range(5):
+                        end_col = c + offset
+                        if 0 <= end_col < board.shape[1] and board[r, end_col] == 0:
+                            good_moves.add((r, end_col))
+        # Vertical
+        conv_v = convolve2d(board, kernel_v, mode='valid')
+        for r in range(conv_v.shape[0]):
+            for c in range(conv_v.shape[1]):
+                if conv_v[r, c] == 4 * player:
+                    for offset in range(5):
+                        end_row = r + offset
+                        if 0 <= end_row < board.shape[0] and board[end_row, c] == 0:
+                            good_moves.add((end_row, c))
+
+        # Diagonal ↘
+        conv_d1 = convolve2d(board, kernel_d1, mode='valid')
+        for r in range(conv_d1.shape[0]):
+            for c in range(conv_d1.shape[1]):
+                if conv_d1[r, c] == 4 * player:
+                    for offset in range(5):
+                        end_pos = (r + offset, c + offset)
+                        if 0 <= end_pos[0] < board.shape[0] and 0 <= end_pos[1] < board.shape[1]:
+                            if board[end_pos] == 0:
+                                good_moves.add(end_pos)
+
+        # Anti-diagonal ↙
+        conv_d2 = convolve2d(board, kernel_d2, mode='valid')
+        for r in range(conv_d2.shape[0]):
+            for c in range(conv_d2.shape[1]):
+                if conv_d2[r, c] == 4 * player:
+                    for offset in range(5):
+                        end_pos = (r + offset, c - offset + 4)
+                        if 0 <= end_pos[0] < board.shape[0] and 0 <= end_pos[1] < board.shape[1]:
+                            if board[end_pos] == 0:
+                                good_moves.add(end_pos)
+
         return list(good_moves)
 
     def get_good_moves2(self, board, current_player):
@@ -212,175 +426,31 @@ class MCTS:
         good_moves = self.detect_open_four(board, current_player)
         if good_moves:
             return good_moves
+
+        good_moves = self.detect_open_four(board, -1 * current_player)
+        if good_moves:
+            return good_moves
         
         good_moves = self.detect_open_three(board, current_player)
         if good_moves:
             return good_moves
         
+        good_moves = self.detect_open_three(board, -1 * current_player)
+        if good_moves:
+            return good_moves
         return []
 
 
     def get_good_moves(self, board, current_player):
         '''
-            This function generates promising moves based on the current board state.
-            Prioritizes critical moves and returns up to 10 most promising positions.
-
-            @param board: Current board state (2d array) 15 x 15. 0 = empty, 1 = player, -1 = opponent
-            @param current_player: Current player (1 or -1)
-            @return: List of up to 10 promising moves, prioritized by importance
+            First check the obvious moves. Then check the good moves.
         '''
-        # Priority sets for different move types
-        direct_win_moves = set()  # Direct winning moves = open four for player
-        direct_block_moves = set()  # Add stone to block opponent's open four / half open four
-        indirect_win_moves = set()  # Add one stone to make open four in a row ==> win
-        defend_moves = set()  # open three in a row for opponent / need to block to prevent opponent's win
 
-        direction_vectors = [
-            (1, 0),   # vertical
-            (0, 1),   # horizontal
-            (1, 1),   # diagonal down-right
-            (1, -1),  # diagonal down-left
-        ]
-
-        # Check all positions and directions for patterns
-        for i in range(15):
-            for j in range(15):
-                if board[i][j] == 0:  # Only check empty positions
-                    continue
-                    
-                player = board[i][j]
-                
-                for dx, dy in direction_vectors:
-                    block_before = False
-                    bx, by = i - dx, j - dy
-                    if 0 <= bx < 15 and 0 <= by < 15 and board[bx][by] == player:
-                        continue  # Since the previous position is occupied by the same player, no need to check further
-
-                    if 0 > bx or bx >= 15 or 0 > by or by >= 15 or board[bx][by] == -player:
-                        block_before = True
-
-                    # Count consecutive pieces in this direction
-                    three_open = False
-                    count = 1  # Count the current piece
-                    # check four in a row / or four in a row with one empty space
-                    for k in range(1, 5):
-                        nx, ny = i + dx * k, j + dy * k
-                        if 0 <= nx < 15 and 0 <= ny < 15 and board[nx][ny] == player:
-                            count += 1
-                            if count == 4:
-                                break
-                        elif 0 > nx or nx >= 15 or 0 > ny or ny >= 15 or board[nx][ny] == -player:
-                            count = -1  # Blocked by opponent
-                            break
-                        else:
-                            if count == 3 and not block_before:
-                                # If we have three in a row and the next is empty, it's a good move
-                                three_open = True
-
-                    if count == 4:
-                        # If we have four in a row, but need to check the end of the row
-
-                        # check if the prev position is empty
-                        if not block_before:
-                            # check if the stone should be placed in the middle of the four
-                            put_in_the_middle = False
-                            for n in range(1, 4):  # Check four steps away
-                                nx, ny = i + dx * n, j + dy * n
-                                if 0 <= nx < 15 and 0 <= ny < 15 and board[nx][ny] == 0:
-                                    if player == current_player:
-                                        direct_win_moves.add((nx, ny))
-                                    else:
-                                        direct_block_moves.add((nx, ny))
-                                    put_in_the_middle = True
-                        
-                            if not put_in_the_middle:
-                                # Add the position before the four
-                                if player == current_player:
-                                    direct_win_moves.add((i - dx, j - dy))
-                                else:
-                                    direct_block_moves.add((i - dx, j - dy))
-                                
-                                # Add the position after the four
-                                nx, ny = i + dx * 4, j + dy * 4
-                                if 0 <= nx < 15 and 0 <= ny < 15 and board[nx][ny] == 0:
-                                    if player == current_player:
-                                        direct_win_moves.add((nx, ny))
-                                    else:
-                                        direct_block_moves.add((nx, ny))
-                        else:
-                            # If we have four in a row and the next is blocked, 
-                            # check if the stone should be placed in the middle of the four
-                            put_in_the_middle = False
-                            for n in range(1, 4):  # Check four steps away
-                                nx, ny = i + dx * n, j + dy * n
-                                if 0 <= nx < 15 and 0 <= ny < 15 and board[nx][ny] == 0:
-                                    if player == current_player:
-                                        direct_win_moves.add((nx, ny))
-                                    else:
-                                        direct_block_moves.add((nx, ny))
-                                    put_in_the_middle = True
-                            if not put_in_the_middle:
-                                # Cannot add the position before the four since its blocked
-                                # Add the position after the four
-                                nx, ny = i + dx * 4, j + dy * 4
-                                if 0 <= nx < 15 and 0 <= ny < 15 and board[nx][ny] == 0:
-                                    if player == current_player:
-                                        direct_win_moves.add((nx, ny))
-                                    else:
-                                        direct_block_moves.add((nx, ny))
-
-                    if three_open:
-                        put_in_the_middle = False
-                        for n in range(1, 4):  # Check three steps away
-                            nx, ny = i + dx * n, j + dy * n
-                            if 0 <= nx < 15 and 0 <= ny < 15 and board[nx][ny] == 0:
-                                # If we have three in a row, it's a good move
-                                if player == current_player:
-                                    indirect_win_moves.add((nx, ny)) 
-                                else:
-                                    defend_moves.add((nx, ny))
-                                put_in_the_middle = True
-                        if not put_in_the_middle:
-                            # If we have three in a row, it's a good move
-                            if player == current_player:
-                                indirect_win_moves.add((i - dx, j - dy)) # Before the three
-                            else:
-                                defend_moves.add((i - dx, j - dy))
-        if direct_win_moves:
-            # If we have open four positions, return them
-            return list(direct_win_moves)
-        if direct_block_moves:
-            # If we have open three positions, return them
-            return list(direct_block_moves)
+        obvious_moves = self.get_obvious_moves(board, current_player)
+        if obvious_moves:
+            return obvious_moves
         
-        if indirect_win_moves:
-            # If we have indirect win positions, return them
-            return list(indirect_win_moves)
-
-        if defend_moves:
-            # If we have defend positions, return them
-            return list(defend_moves)
-        
-        good_moves = set()
-
-        # If good moves are not found, return random empty positions
-        stone_mask = (board != 0).astype(int)
-        # Step 2: Convolve to get neighbor counts
-        kernel = np.array([
-            [1, 1, 1],
-            [1, 0, 1],
-            [1, 1, 1]
-        ])
-        neighbor_counts = convolve2d(stone_mask, kernel, mode='same', boundary='fill', fillvalue=0)
-
-        # Step 3: Mask out non-empty cells
-        empty_mask = (board == 0)
-        valid_scores = neighbor_counts * empty_mask
-
-        # Step 4: Get index with highest value among empty cells
-        max_value = np.max(valid_scores)
-        indices = np.argwhere(valid_scores == max_value)
-        return list(indices)
+        return self.get_good_moves2(board, current_player)
 
     def expand(self, node):
         '''
@@ -394,7 +464,7 @@ class MCTS:
         promising_moves = self.get_good_moves2(board, current_player=node.current_player)
         promising_moves = np.random.permutation(promising_moves)  # Shuffle the promising moves to add some randomness
 
-        for move in promising_moves[:10]:  # Take first 10
+        for move in promising_moves[:5]:  # Take first 5
             child_node = Node(current_player=-node.current_player, parent=node, move=move)
             node.children.append(child_node)
 
@@ -444,7 +514,7 @@ class MCTS:
         MAX_SIMULATION_STEPS = 10  # Limit the number of steps to prevent infinite loops
         for _ in range(MAX_SIMULATION_STEPS):
             # Randomly select a move
-            valid_moves = self.get_good_moves2(current_board, current_player)
+            valid_moves = self.get_good_moves(current_board, current_player)
             if not valid_moves:
                 # draw
                 result = 0.5
@@ -458,7 +528,7 @@ class MCTS:
                 result = 1 if winner == current_player else -1
                 break
             # Randomly select a move for the opponent
-            valid_moves = self.get_good_moves2(current_board, -1 * current_player)
+            valid_moves = self.get_good_moves(current_board, -1 * current_player)
             if not valid_moves:
                 # draw
                 result = 0.5
@@ -529,3 +599,170 @@ class MCTS:
             return None
         # Convert the best action (row, col) to a single action index
         return best_action[0] * 15 + best_action[1] 
+
+
+# # Example usage and test function
+# def test_open_three_detection():
+#     """Test the open three detection with sample boards"""
+
+#     mcts = MCTS(iterations=1)  # Initialize MCTS with 1 iteration
+
+#     def print_test_case(name, board, player):
+#         print(f"\n{'='*50}")
+#         print(f"TEST CASE: {name}")
+#         print("Board:")
+#         print(board)
+#         result = mcts.detect_open_three(board, player)
+#         print(f"Open threes for player {player}: {sorted(result)}")
+#         return result
+    
+#     # Test Case 1: Horizontal Continuous Open Three
+#     board1 = np.array([
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 1, 1, 1, 0, 0, 0, 0, 0],  # _XXX_ at positions 0,4
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#     ])
+#     print_test_case("Horizontal Continuous Open Three", board1, 1)
+    
+#     # Test Case 2: Vertical Continuous Open Three  
+#     board2 = np.array([
+#         [0, 0, 0, 0, 0, 0, 0],
+#         [0, 1, 0, 0, 0, 0, 0],
+#         [0, 1, 0, 0, 0, 0, 0],  # Vertical XXX
+#         [0, 1, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0],
+#     ])
+#     print_test_case("Vertical Continuous Open Three", board2, 1)
+    
+#     # Test Case 3: Diagonal (SE) Continuous Open Three
+#     board3 = np.array([
+#         [0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 1, 0, 0, 0, 0],
+#         [0, 0, 0, 1, 0, 0, 0],  # Diagonal XXX ↘
+#         [0, 0, 0, 0, 1, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0],
+#     ])
+#     print_test_case("Diagonal (SE) Continuous Open Three", board3, 1)
+    
+#     # Test Case 4: Anti-Diagonal (SW) Continuous Open Three
+#     board4 = np.array([
+#         [0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 1, 0, 0],
+#         [0, 0, 0, 1, 0, 0, 0],  # Anti-diagonal XXX ↙
+#         [0, 0, 1, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0],
+#     ])
+#     print_test_case("Anti-Diagonal (SW) Continuous Open Three", board4, 1)
+    
+#     # Test Case 5: Horizontal Detached Pattern _X_XX_
+#     board5 = np.array([
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 1, 0, 1, 1, 0, 0, 0, 0],  # _X_XX_ pattern
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#     ])
+#     print_test_case("Horizontal Detached Pattern _X_XX_", board5, 1)
+    
+#     # Test Case 6: Horizontal Detached Pattern _XX_X_
+#     board6 = np.array([
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 1, 1, 0, 1, 0, 0, 0, 0],  # _XX_X_ pattern
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#     ])
+#     print_test_case("Horizontal Detached Pattern _XX_X_", board6, 1)
+    
+#     # Test Case 7: Vertical Detached Pattern _X_XX_
+#     board7 = np.array([
+#         [0, 0, 0, 0, 0],
+#         [0, 1, 0, 0, 0],  # _
+#         [0, 0, 0, 0, 0],  # X
+#         [0, 1, 0, 0, 0],  # _  
+#         [0, 1, 0, 0, 0],  # X
+#         [0, 0, 0, 0, 0],  # X
+#         [0, 0, 0, 0, 0],  # _
+#     ])
+#     print_test_case("Vertical Detached Pattern _X_XX_", board7, 1)
+    
+#     # Test Case 8: Vertical Detached Pattern _XX_X_
+#     board8 = np.array([
+#         [0, 0, 0, 0, 0],
+#         [0, 1, 0, 0, 0],  # _
+#         [0, 1, 0, 0, 0],  # X
+#         [0, 0, 0, 0, 0],  # X
+#         [0, 1, 0, 0, 0],  # _
+#         [0, 0, 0, 0, 0],  # X
+#         [0, 0, 0, 0, 0],  # _
+#     ])
+#     print_test_case("Vertical Detached Pattern _XX_X_", board8, 1)
+    
+#     # Test Case 9: Diagonal (SE) Detached Pattern _X_XX_
+#     board9 = np.array([
+#         [0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 1, 0, 0, 0, 0, 0, 0],  # _
+#         [0, 0, 0, 0, 0, 0, 0, 0],  #  X
+#         [0, 0, 0, 1, 0, 0, 0, 0],  #   _
+#         [0, 0, 0, 0, 1, 0, 0, 0],  #    X
+#         [0, 0, 0, 0, 0, 0, 0, 0],  #     X
+#         [0, 0, 0, 0, 0, 0, 0, 0],  #      _
+#         [0, 0, 0, 0, 0, 0, 0, 0],
+#     ])
+#     print_test_case("Diagonal (SE) Detached Pattern _X_XX_", board9, 1)
+    
+#     # Test Case 10: Anti-Diagonal (SW) Detached Pattern _XX_X_
+#     board10 = np.array([
+#         [0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 1, 0, 0],  #      _
+#         [0, 0, 0, 0, 1, 0, 0, 0],  #     X
+#         [0, 0, 0, 0, 0, 0, 0, 0],  #    X
+#         [0, 0, 1, 0, 0, 0, 0, 0],  #   _
+#         [0, 0, 0, 0, 0, 0, 0, 0],  #  X
+#         [0, 0, 0, 0, 0, 0, 0, 0],  # _
+#     ])
+#     print_test_case("Anti-Diagonal (SW) Detached Pattern _XX_X_", board10, 1)
+    
+#     # Test Case 11: Multiple Patterns (Both Players)
+#     board11 = np.array([
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 1, 1, 1, 0, 0, 0, 0, 0],  # Horizontal open three for player 1
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, -1, 0, -1, -1, 0, 0, 0],  # Detached pattern for player -1
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, -1, 0, 0, 0, 0, 0, 0, 0],  # Start of vertical pattern
+#         [0, -1, 0, 0, 0, 0, 0, 0, 0],  # for player -1
+#         [0, -1, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0],
+#     ])
+#     print_test_case("Multiple Patterns - Player 1", board11, 1)
+#     print_test_case("Multiple Patterns - Player -1", board11, -1)
+    
+#     # Test Case 12: Edge Cases - Near Board Boundaries
+#     board12 = np.array([
+#         [1, 1, 1, 0, 0, 0, 0],  # Open three at left edge (only right side open)
+#         [0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 1, 1, 1],  # Open three at right edge (only left side open)
+#         [0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0],
+#     ])
+#     print_test_case("Edge Cases - Near Boundaries", board12, 1)
+    
+#     # Test Case 13: No Open Threes (Blocked)
+#     board13 = np.array([
+#         [0, 0, 0, 0, 0, 0, 0],
+#         [-1, 1, 1, 1, -1, 0, 0],  # Blocked three (no open ends)
+#         [0, 0, 0, 0, 0, 0, 0],
+#         [0, 1, 0, 1, 1, 0, 0],  # Almost detached pattern but missing end empty
+#         [0, 0, 0, 0, 0, 0, 0],
+#     ])
+#     print_test_case("No Open Threes (All Blocked)", board13, 1)
+
+# if __name__ == "__main__":
+#     test_open_three_detection()

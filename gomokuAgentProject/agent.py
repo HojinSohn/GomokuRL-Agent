@@ -118,6 +118,8 @@ class DQNAgent():
         # print("Loss:", loss.item())
         optimizer.zero_grad()
         loss.backward()
+        # Clip gradients to prevent exploding gradients
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
         return loss.detach().item()

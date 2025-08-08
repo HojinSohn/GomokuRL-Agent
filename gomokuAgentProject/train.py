@@ -12,11 +12,12 @@ if __name__ == "__main__":
     parser.add_argument("--init_epsilon", type=float, default=0.95, help="Initial exploration rate")
     parser.add_argument("--load_model", type=lambda x: (str(x).lower() == 'true'), default=False, help="Load existing model or not")
     parser.add_argument("--max_episodes", type=int, default=10000, help="Number of episodes to train the agent")
+    parser.add_argument("--epsilon_decay_interval", type=int, default=100, help="Number of episodes to decay epsilon")
 
     args = parser.parse_args()
 
     UPDATE_MODEL_INTERVAL = 100  # Print every 100 episodes
-    EPSILON_DECAY_INTERVAL = 100  # Decay epsilon every 100 episodes
+    EPSILON_DECAY_INTERVAL = args.epsilon_decay_interval  # Decay epsilon every specified interval
     # get arg to check whether to use GUI or not
     print(f"Using device: {device}")
     gomokuEnv = GomokuEnv()
@@ -61,15 +62,9 @@ if __name__ == "__main__":
         player2_samples = []
         winner = None
 
-        # Swap order of players every episode
-        swap = episode % 2 == 0
-
         while move_count < 225:  # 15x15 board, max 225 turns
             # gui.draw_board(gomokuEnv.state[0])
             current_turn = total_turns & 1  
-
-            if swap:
-                current_turn = 1 - current_turn
 
             action = agent.get_action(gomokuEnv.state, current_turn)
             # print(f"Action chosen: {action} by player {current_turn}")
@@ -101,11 +96,12 @@ if __name__ == "__main__":
         if winner is not None:
             if winner == 0:
                 num_moves = len(player2_samples)
-                bad_move_start = max(0, num_moves - 3)  # Start from the last 3 moves
+                bad_move_start = max(0, num_moves - 5)  # Start from the last 5 moves
+                denom = max(1, num_moves - bad_move_start)  # Avoid division by zero
                 for i in range(bad_move_start, num_moves):
                     # Scale linearly: earlier moves get smaller negative reward
                     relative_i = i - bad_move_start
-                    negative_reward = -10 * ((relative_i + 1) / (num_moves - bad_move_start))
+                    negative_reward = -10 * ((relative_i + 1) / denom)
                     player2_samples[i] = (
                         player2_samples[i][0],
                         player2_samples[i][1],
@@ -114,23 +110,27 @@ if __name__ == "__main__":
                         player2_samples[i][4],
                     )
                 num_moves = len(player1_samples)
-                good_move_start = max(0, num_moves - 3)  # Start from the last 3 moves
+                good_move_start = max(0, num_moves - 5)  # Start from the last 5 moves
+                denom = max(1, num_moves - good_move_start)  # Avoid division by zero
                 for i in range(good_move_start, num_moves):
-                    relative_i = i - good_move_start
-                    positive_reward = 10 * ((relative_i + 1) / (num_moves - good_move_start))
-                    player1_samples[i] = (
-                        player1_samples[i][0],
-                        player1_samples[i][1],
-                        positive_reward,
-                        player1_samples[i][3],
-                        player1_samples[i][4],
-                    )
+                    # update the reward for the last 5 moves only if the move was valid
+                    if player1_samples[i][2] > 0:
+                        relative_i = i - good_move_start
+                        positive_reward = 10 * ((relative_i + 1) / denom)
+                        player1_samples[i] = (
+                            player1_samples[i][0],
+                            player1_samples[i][1],
+                            positive_reward,
+                            player1_samples[i][3],
+                            player1_samples[i][4],
+                        )
             else:
                 num_moves = len(player1_samples)
-                bad_move_start = max(0, num_moves - 3)  # Start from the last 3 moves
+                bad_move_start = max(0, num_moves - 5)  # Start from the last 5 moves
+                denom = max(1, num_moves - bad_move_start)  # Avoid division by zero
                 for i in range(bad_move_start, num_moves):
                     relative_i = i - bad_move_start
-                    negative_reward = -10 * ((relative_i + 1) / (num_moves - bad_move_start))
+                    negative_reward = -10 * ((relative_i + 1) / denom)
                     player1_samples[i] = (
                         player1_samples[i][0],
                         player1_samples[i][1],
@@ -140,17 +140,19 @@ if __name__ == "__main__":
                     )
 
                 num_moves = len(player2_samples)
-                good_move_start = max(0, num_moves - 3)  # Start from the last 3 moves
+                good_move_start = max(0, num_moves - 5)  # Start from the last 5 moves
+                denom = max(1, num_moves - good_move_start)  # Avoid division by zero
                 for i in range(good_move_start, num_moves):
-                    relative_i = i - good_move_start
-                    positive_reward = 10 * ((relative_i + 1) / (num_moves - good_move_start))
-                    player2_samples[i] = (
-                        player2_samples[i][0],
-                        player2_samples[i][1],
-                        positive_reward,
-                        player2_samples[i][3],
-                        player2_samples[i][4],
-                    )
+                    if player2_samples[i][2] > 0:
+                        relative_i = i - good_move_start
+                        positive_reward = 10 * ((relative_i + 1) / denom)
+                        player2_samples[i] = (
+                            player2_samples[i][0],
+                            player2_samples[i][1],
+                            positive_reward,
+                            player2_samples[i][3],
+                            player2_samples[i][4],
+                        )
         
         # Add samples to the agent's memory
         for sample in player1_samples:
@@ -159,13 +161,14 @@ if __name__ == "__main__":
             agent.save_sample(sample, turn=1)
 
         # Train the models
-        for _ in range(move_count * 2):  # Train twice for each move
-            if len(agent.memory1) >= agent.batch_size:
+        if len(agent.memory1) >= agent.batch_size:
+            for _ in range(move_count):
                 loss = agent.train_model(agent.model1, agent.target_model1, agent.memory1, agent.optimizer1)
                 if loss is not None:
                     recent_losses.append(loss)
 
-            if len(agent.memory2) >= agent.batch_size:
+        if len(agent.memory2) >= agent.batch_size:
+            for _ in range(move_count):
                 loss = agent.train_model(agent.model2, agent.target_model2, agent.memory2, agent.optimizer2)
                 if loss is not None:
                     recent_losses.append(loss)

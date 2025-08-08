@@ -26,7 +26,10 @@ class Agent(object):
     def make_move_mcts(self, state):
         print("Agent is making a move using MCTS")
 
-        # moves = self.mcts.get_good_moves2(np.array(state), self.turn)
+        # moves = self.mcts.get_obvious_moves(np.array(state), self.turn)
+        # if not moves:
+        #     print("No obvious moves found, using MCTS to find the best move")
+        #     moves = self.mcts.get_good_moves2(np.array(state), self.turn)
         # row, col = moves[0]
         # print(f"Agent selected move: ({row}, {col})")
         # return row * 15 + col
@@ -91,7 +94,7 @@ if __name__ == "__main__":
         if turn % 2 == 1:
             # Agent's turn
             print("Agent's turn")
-            action = agent.make_move(env.state[0])
+            action = agent.make_move_mcts(env.state[0])
             env.step(action, 1)
             row, col = divmod(action, 15)
             print(f"Agent placed stone at ({row}, {col})")
@@ -110,7 +113,7 @@ if __name__ == "__main__":
                         gui.quit()
                         pygame.quit()
                         sys.exit()
-                    elif event.type == pygame.MOUSEBUTTONDOWN:
+                    elif event.type == pygame.MOUSEBUTTONDOWN and not move_made:
                         print("Mouse button pressed")
                         if event.button == 1:  # Left click
                             x, y = event.pos
