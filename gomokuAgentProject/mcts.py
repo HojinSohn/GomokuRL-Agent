@@ -1,6 +1,7 @@
 # Node class for Tree Search
 import numpy as np
 import copy
+from scipy.signal import convolve2d
 class Node:
     def __init__(self, current_player, parent=None, move=None):
         self.parent = parent
@@ -18,7 +19,7 @@ class Node:
 
 
 class MCTS:
-    def __init__(self, iterations=10):
+    def __init__(self, iterations=50):
         self.iterations = iterations
 
     def get_current_player(self, board):
@@ -50,6 +51,174 @@ class MCTS:
         while node.children:
             node = max(node.children, key=lambda n: n.ucb1())
         return node
+
+    def detect_open_three(self, board, player):
+        kernel_h = np.array([[1, 1, 1]])
+        kernel_v = kernel_h.T
+        kernel_d1 = np.eye(3, dtype=int)
+        kernel_d2 = np.fliplr(kernel_d1)
+
+        player_mask = (board == player).astype(int)
+        empty_mask = (board == 0).astype(int)
+
+        good_moves = set()
+        # Horizontal
+        conv_h = convolve2d(player_mask, kernel_h, mode='valid')
+        for r in range(conv_h.shape[0]):
+            for c in range(conv_h.shape[1]):
+                if conv_h[r, c] == 3:
+                    # Check ends at (r, c-1) and (r, c+3)
+                    left_end = c - 1
+                    right_end = c + 3
+                    if left_end >= 0 and empty_mask[r, left_end] and right_end < board.shape[1] and empty_mask[r, right_end]:
+                        good_moves.add((r, left_end))
+                        good_moves.add((r, right_end))
+
+        # Vertical
+        conv_v = convolve2d(player_mask, kernel_v, mode='valid')
+        for r in range(conv_v.shape[0]):
+            for c in range(conv_v.shape[1]):
+                if conv_v[r, c] == 3:
+                    top_end = r - 1
+                    bottom_end = r + 3
+                    if top_end >= 0 and empty_mask[top_end, c] and bottom_end < board.shape[0] and empty_mask[bottom_end, c]:
+                        good_moves.add((top_end, c))
+                        good_moves.add((bottom_end, c))
+
+        # Diagonal ↘
+        conv_d1 = convolve2d(player_mask, kernel_d1, mode='valid')
+        for r in range(conv_d1.shape[0]):
+            for c in range(conv_d1.shape[1]):
+                if conv_d1[r, c] == 3:
+                    # Check ends diagonally: (r-1, c-1) and (r+3, c+3)
+                    top_left = (r - 1, c - 1)
+                    bottom_right = (r + 3, c + 3)
+                    if 0 <= top_left[0] < board.shape[0] and 0 <= top_left[1] < board.shape[1] and empty_mask[top_left] and \
+                        0 <= bottom_right[0] < board.shape[0] and 0 <= bottom_right[1] < board.shape[1] and empty_mask[bottom_right]:
+                        good_moves.add(top_left)
+                        good_moves.add(bottom_right)
+
+        # Anti-diagonal ↙
+        conv_d2 = convolve2d(player_mask, kernel_d2, mode='valid')
+        for r in range(conv_d2.shape[0]):
+            for c in range(conv_d2.shape[1]):
+                if conv_d2[r, c] == 3:
+                    # Check ends anti-diagonally: (r-1, c+3) and (r+3, c-1)
+                    top_right = (r - 1, c + 3)
+                    bottom_left = (r + 3, c - 1)
+                    if 0 <= top_right[0] < board.shape[0] and 0 <= top_right[1] < board.shape[1] and empty_mask[top_right] and \
+                        0 <= bottom_left[0] < board.shape[0] and 0 <= bottom_left[1] < board.shape[1] and empty_mask[bottom_left]:
+                        good_moves.add(top_right)
+                        good_moves.add(bottom_left)
+
+        return list(good_moves)
+    
+    def detect_open_four(self, board, player):
+        kernel_h = np.array([[1, 1, 1, 1]])
+        kernel_v = kernel_h.T
+        kernel_d1 = np.eye(4, dtype=int)
+        kernel_d2 = np.fliplr(kernel_d1)
+
+        player_mask = (board == player).astype(int)
+        empty_mask = (board == 0).astype(int)
+
+        good_moves = set()
+        # Horizontal
+        conv_h = convolve2d(player_mask, kernel_h, mode='valid')
+        for r in range(conv_h.shape[0]):
+            for c in range(conv_h.shape[1]):
+                if conv_h[r, c] == 4:
+                    # Check ends at (r, c-1) and (r, c+4)
+                    left_end = c - 1
+                    right_end = c + 4
+                    if left_end >= 0 and empty_mask[r, left_end]:
+                        good_moves.add((r, left_end))
+                    if right_end < board.shape[1] and empty_mask[r, right_end]:
+                        good_moves.add((r, right_end))
+
+        # Vertical
+        conv_v = convolve2d(player_mask, kernel_v, mode='valid')
+        for r in range(conv_v.shape[0]):
+            for c in range(conv_v.shape[1]):
+                if conv_v[r, c] == 4:
+                    top_end = r - 1
+                    bottom_end = r + 4
+                    if top_end >= 0 and empty_mask[top_end, c]:
+                        good_moves.add((top_end, c))
+                    if bottom_end < board.shape[0] and empty_mask[bottom_end, c]:
+                        good_moves.add((bottom_end, c))
+
+        # Diagonal ↘
+        conv_d1 = convolve2d(player_mask, kernel_d1, mode='valid')
+        for r in range(conv_d1.shape[0]):
+            for c in range(conv_d1.shape[1]):
+                if conv_d1[r, c] == 4:
+                    # Check ends diagonally: (r-1, c-1) and (r+4, c+4)
+                    top_left = (r - 1, c - 1)
+                    bottom_right = (r + 4, c + 4)
+                    if 0 <= top_left[0] < board.shape[0] and 0 <= top_left[1] < board.shape[1]:
+                        if empty_mask[top_left]:
+                            good_moves.add(top_left)
+                    if 0 <= bottom_right[0] < board.shape[0] and 0 <= bottom_right[1] < board.shape[1]:
+                        if empty_mask[bottom_right]:
+                            good_moves.add(bottom_right)
+
+        # Anti-diagonal ↙
+        conv_d2 = convolve2d(player_mask, kernel_d2, mode='valid')
+        for r in range(conv_d2.shape[0]):
+            for c in range(conv_d2.shape[1]):
+                if conv_d2[r, c] == 4:
+                    # Check ends anti-diagonally: (r-1, c+4) and (r+4, c-1)
+                    top_right = (r - 1, c + 4)
+                    bottom_left = (r + 4, c - 1)
+                    if 0 <= top_right[0] < board.shape[0] and 0 <= top_right[1] < board.shape[1]:
+                        if empty_mask[top_right]:
+                            good_moves.add(top_right)
+                    if 0 <= bottom_left[0] < board.shape[0] and 0 <= bottom_left[1] < board.shape[1]:
+                        if empty_mask[bottom_left]:
+                            good_moves.add(bottom_left)
+
+        return list(good_moves)
+
+    def get_good_moves2(self, board, current_player):
+        # If good moves are not found, return random empty positions
+        stone_mask = (board != 0).astype(int)
+        # Step 2: Convolve to get neighbor counts
+        kernel = np.array([
+            [1, 1, 1],
+            [1, 0, 1],
+            [1, 1, 1]
+        ])
+        neighbor_counts = convolve2d(stone_mask, kernel, mode='same', boundary='fill', fillvalue=0)
+
+        # Step 3: Mask out non-empty cells
+        empty_mask = (board == 0)
+        valid_scores = neighbor_counts * empty_mask
+
+        # Step 4: Get index with highest value among empty cells
+        max_value = np.max(valid_scores)
+        indices = np.argwhere(valid_scores == max_value)
+        return list(indices)
+    
+    def get_obvious_moves(self, board, current_player):
+        '''
+            This function generates obvious moves based on the current board state.
+            It checks for open four and open three positions, and returns them.
+
+            @param board: Current board state (2d array) 15 x 15. 0 = empty, 1 = player, -1 = opponent
+            @param current_player: Current player (1 or -1)
+            @return: List of obvious moves, prioritized by importance
+        '''
+        good_moves = self.detect_open_four(board, current_player)
+        if good_moves:
+            return good_moves
+        
+        good_moves = self.detect_open_three(board, current_player)
+        if good_moves:
+            return good_moves
+        
+        return []
+
 
     def get_good_moves(self, board, current_player):
         '''
@@ -177,8 +346,6 @@ class MCTS:
                                 indirect_win_moves.add((i - dx, j - dy)) # Before the three
                             else:
                                 defend_moves.add((i - dx, j - dy))
-        print("Turn: ", current_player, " Direct win moves:", direct_win_moves)
-        print("Turn: ", current_player, " Direct block moves:", direct_block_moves)
         if direct_win_moves:
             # If we have open four positions, return them
             return list(direct_win_moves)
@@ -197,16 +364,23 @@ class MCTS:
         good_moves = set()
 
         # If good moves are not found, return random empty positions
-        for i in range(15):
-            for j in range(15):
-                if board[i][j] != 0:
-                    # add adjacent empty positions
-                    for dx, dy in direction_vectors:
-                        for n in range(1, 3):  # Check two steps away
-                            nx, ny = i + dx * n, j + dy * n
-                            if 0 <= nx < 15 and 0 <= ny < 15 and board[nx][ny] == 0:
-                                good_moves.add((nx, ny))
-        return list(good_moves)
+        stone_mask = (board != 0).astype(int)
+        # Step 2: Convolve to get neighbor counts
+        kernel = np.array([
+            [1, 1, 1],
+            [1, 0, 1],
+            [1, 1, 1]
+        ])
+        neighbor_counts = convolve2d(stone_mask, kernel, mode='same', boundary='fill', fillvalue=0)
+
+        # Step 3: Mask out non-empty cells
+        empty_mask = (board == 0)
+        valid_scores = neighbor_counts * empty_mask
+
+        # Step 4: Get index with highest value among empty cells
+        max_value = np.max(valid_scores)
+        indices = np.argwhere(valid_scores == max_value)
+        return list(indices)
 
     def expand(self, node):
         '''
@@ -217,10 +391,10 @@ class MCTS:
         '''
         # Apply moves to get current board state
         board = self.apply_moves_to_board(self.board, node.moves, initial_player=self.root.current_player)
-        promising_moves = self.get_good_moves(board, current_player=node.current_player)
+        promising_moves = self.get_good_moves2(board, current_player=node.current_player)
         promising_moves = np.random.permutation(promising_moves)  # Shuffle the promising moves to add some randomness
 
-        for move in promising_moves[:5]:  # Take first 5
+        for move in promising_moves[:10]:  # Take first 10
             child_node = Node(current_player=-node.current_player, parent=node, move=move)
             node.children.append(child_node)
 
@@ -267,10 +441,10 @@ class MCTS:
 
         # Start the simulation
         result = 0.0
-        MAX_SIMULATION_STEPS = 1  # Limit the number of steps to prevent infinite loops
+        MAX_SIMULATION_STEPS = 10  # Limit the number of steps to prevent infinite loops
         for _ in range(MAX_SIMULATION_STEPS):
             # Randomly select a move
-            valid_moves = self.get_good_moves(current_board, current_player)
+            valid_moves = self.get_good_moves2(current_board, current_player)
             if not valid_moves:
                 # draw
                 result = 0.5
@@ -284,7 +458,7 @@ class MCTS:
                 result = 1 if winner == current_player else -1
                 break
             # Randomly select a move for the opponent
-            valid_moves = self.get_good_moves(current_board, -1 * current_player)
+            valid_moves = self.get_good_moves2(current_board, -1 * current_player)
             if not valid_moves:
                 # draw
                 result = 0.5
@@ -325,10 +499,14 @@ class MCTS:
         '''
         self.board = board  # Update the board state
         current_player = self.get_current_player(self.board)
+        obvious_moves = self.get_obvious_moves(board, current_player)
+        if obvious_moves:
+            obvious_moves = np.random.permutation(obvious_moves)  # Shuffle the obvious moves to add some randomness
+            # If there are obvious moves, return the first one
+            # This is a heuristic to prioritize obvious moves over MCTS
+            return obvious_moves[0][0] * 15 + obvious_moves[0][1]
         self.root = Node(current_player=current_player, parent=None, move=None)  # Reset the root node with the current board state
         for it in range(self.iterations):
-            if it % 100 == 0:
-                print("Iteration:", it)
             # traverse down the tree to a leaf node
             leaf_node = self.traverse(self.root)
             if leaf_node.visits > 0:
