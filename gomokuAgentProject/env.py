@@ -1,7 +1,8 @@
+import copy
 import numpy as np
 from scipy.signal import convolve2d
 
-rewards = {"win" : 10.0, "lose" : -10.0, "step" : 0.001, "invalid" : -0.5}
+rewards = {"win" : 1.0, "lose" : -1.0, "step" : 0.001, "invalid" : -0.5}
 
 class GomokuEnv:
     def __init__(self):
@@ -27,32 +28,64 @@ class GomokuEnv:
         self.state[0][center, center] = 1
         self.state[1][center, center] = -1
 
-    def check_winner(self, turn):
-        board = self.state[turn]
-        masked_board = (board == 1).astype(int)
-        for kernel in self.kernels:
-            conv = convolve2d(masked_board, kernel, mode='valid')
-            if np.any(conv == 5):
-                return True
-        return False
+    def check_winner(self, board, prev_move):
+        # Assume board will always have the player's perspective as 1, and the opponent's as -1
+        player_just_put = 1 
+        rows, cols = board.shape
+        r, c = prev_move
+
+        # Check if the move is valid and belongs to player_just_put
+        if not (0 <= r < rows and 0 <= c < cols and board[r, c] == player_just_put):
+            return None
+
+        # Directions: horizontal, vertical, main diagonal, anti-diagonal
+        directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
+
+        for dr, dc in directions:
+            # Count consecutive stones in both directions (e.g., left and right for horizontal)
+            count = 1  # Include the current move
+            # Forward direction
+            for i in range(1, 5):  # Check up to 4 cells forward
+                nr, nc = r + dr * i, c + dc * i
+                if not (0 <= nr < rows and 0 <= nc < cols and board[nr, nc] == player_just_put):
+                    break
+                count += 1
+            # Backward direction
+            for i in range(1, 5):  # Check up to 4 cells backward
+                nr, nc = r - dr * i, c - dc * i
+                if not (0 <= nr < rows and 0 <= nc < cols and board[nr, nc] == player_just_put):
+                    break
+                count += 1
+            # Check if we have 5 or more consecutive stones
+            if count >= 5:
+                return player_just_put
+
+        return None
     
     # Perform an action and return the new state, whether the game is completed, reward, and whether the action was valid
     def step(self, action, turn):
         row, col = divmod(action, 15)
         if self.state[turn][row, col] != 0:
-            return self.state[turn], False, rewards["invalid"], False
+            return self.state[turn].copy(), self.state[turn].copy(), False, rewards["invalid"], False
+        
+        next_state = self.state[turn].copy()
         # Place the piece
-        self.state[turn][row, col] = 1
-        self.state[0 if turn == 1 else 1][row, col] = -1
+        next_state[row, col] = 1
         completed = False
-        if self.check_winner(turn):
+        if self.check_winner(next_state, (row, col)): # pass prev_move as a tuple
             completed = True
             reward = rewards["win"]
         else:
             reward = rewards["step"]
 
-        return self.state[turn], completed, reward, True
-    
+        return self.state[turn].copy(), next_state, completed, reward, True
+
+    def update_state(self, turn, action):
+        row, col = divmod(action, 15)
+        self.state[turn][row, col] = 1
+        # Update the opponent's state
+        opponent_turn = 1 - turn
+        self.state[opponent_turn][row, col] = -1
 
 
 # def test_vertical_win():

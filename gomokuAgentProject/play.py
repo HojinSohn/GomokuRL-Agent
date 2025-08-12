@@ -1,5 +1,7 @@
 import copy
+import sys
 from env import GomokuEnv
+from agent import DQNAgent
 from mcts import MCTS
 from model import Model
 import pygame
@@ -83,67 +85,97 @@ if __name__ == "__main__":
     env = GomokuEnv()
     turn = 0  # Start with player 1
     agent = Agent(-1) # Agent plays second (white stones)
-    done = False
-    while not done:
-        if turn == 0:
-            env.first_move()
-            print("Player 1 (Black) starts the game")
-            turn += 1
-            gui.draw_board(env.state[0])
-            continue
-        if turn % 2 == 1:
-            # Agent's turn
-            print("Agent's turn")
-            action = agent.make_move_mcts(env.state[0])
-            env.step(action, 1)
-            row, col = divmod(action, 15)
-            print(f"Agent placed stone at ({row}, {col})")
-            gui.draw_board(env.state[0])
-            win = env.check_winner(1)
-            if win:
-                print("Agent wins!")
-                done = True
-            turn += 1
-        else:
-            print("Waiting for player's move...")
-            move_made = False
-            while not move_made:
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        gui.quit()
-                        pygame.quit()
-                        sys.exit()
-                    elif event.type == pygame.MOUSEBUTTONDOWN and not move_made:
-                        print("Mouse button pressed")
-                        if event.button == 1:  # Left click
-                            x, y = event.pos
-                            row = (y - gui.MARGIN) // gui.CELL_SIZE
-                            col = (x - gui.MARGIN) // gui.CELL_SIZE
-                            action = row * 15 + col
-                            print(f"Player clicked on cell ({row}, {col})")
-                            env.step(action, 0)
-                            move_made = True  # <== Exit the wait loop
-                            gui.draw_board(env.state[0])
-                            win = env.check_winner(0)
-                            if win:
-                                print("Player wins!")
-                                done = True
-                            turn += 1
 
-                    elif event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_ESCAPE:
-                            gui.quit()
-                            pygame.quit()
-                            sys.exit()
-                        elif event.key == pygame.K_r:  # Reset the board
-                            state = [[0 for _ in range(15)] for _ in range(15)]
-                            gui.draw_board(state)
-                            turn = 0
-                            move_made = True  # Exit the wait loop so main loop can restart
+    dqnAgent = DQNAgent()
+    dqnAgent.load_memory()  # Load the agent's memory if available 
+    clock = pygame.time.Clock()
 
-                pygame.time.delay(100)
-                pygame.display.flip()
+    print(len(dqnAgent.memory1), "samples loaded from memory")
+
+    for i, sample in enumerate(dqnAgent.memory1):
+        state, action, reward, next_state, done = sample[0], sample[1], sample[2], sample[3], sample[4]
+        board = np.array(state)
+        next_board = np.array(next_state)
+        print(f"Sample state {i}: {board}")
+        print(f"Sample next state {i}: {next_board}")
+        print(f"Action: {action}, Reward: {reward}, Done: {done}")
+
+        # Handle pygame events first
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+        
+        pygame.time.wait(1000)
+        gui.draw_board(board)  # Draw the board
+        
+        # Wait 1 second using clock (non-blocking)
+        pygame.time.wait(1000)
+        gui.draw_board(next_board)  # Draw the board
+
+    # done = False
+    # while not done:
+    #     if turn == 0:
+    #         env.first_move()
+    #         print("Player 1 (Black) starts the game")
+    #         turn += 1
+    #         gui.draw_board(env.state[0])
+    #         continue
+    #     if turn % 2 == 1:
+    #         # Agent's turn
+    #         print("Agent's turn")
+    #         action = agent.make_move(env.state[0])
+    #         env.step(action, 1)
+    #         row, col = divmod(action, 15)
+    #         env.update_state(1, action)
+    #         print(f"Agent placed stone at ({row}, {col})")
+    #         gui.draw_board(env.state[0])
+    #         win = env.check_winner(env.state[0], (row, col))
+    #         if win:
+    #             print("Agent wins!")
+    #             done = True
+    #         turn += 1
+    #     else:
+    #         print("Waiting for player's move...")
+    #         move_made = False
+    #         while not move_made:
+    #             for event in pygame.event.get():
+    #                 if event.type == pygame.QUIT:
+    #                     gui.quit()
+    #                     pygame.quit()
+    #                     sys.exit()
+    #                 elif event.type == pygame.MOUSEBUTTONDOWN and not move_made:
+    #                     print("Mouse button pressed")
+    #                     if event.button == 1:  # Left click
+    #                         x, y = event.pos
+    #                         row = (y - gui.MARGIN) // gui.CELL_SIZE
+    #                         col = (x - gui.MARGIN) // gui.CELL_SIZE
+    #                         action = row * 15 + col
+    #                         print(f"Player clicked on cell ({row}, {col})")
+    #                         env.step(action, 0)
+    #                         env.update_state(0, action)
+    #                         move_made = True  # <== Exit the wait loop
+    #                         gui.draw_board(env.state[0])
+    #                         win = env.check_winner(env.state[0], (row, col))
+    #                         if win:
+    #                             print("Player wins!")
+    #                             done = True
+    #                         turn += 1
+
+    #                 elif event.type == pygame.KEYDOWN:
+    #                     if event.key == pygame.K_ESCAPE:
+    #                         gui.quit()
+    #                         pygame.quit()
+    #                         sys.exit()
+    #                     elif event.key == pygame.K_r:  # Reset the board
+    #                         state = [[0 for _ in range(15)] for _ in range(15)]
+    #                         gui.draw_board(state)
+    #                         turn = 0
+    #                         move_made = True  # Exit the wait loop so main loop can restart
+
+    #             pygame.time.delay(100)
+    #             pygame.display.flip()
 
 
-        pygame.time.delay(100)
-        pygame.display.flip()
+    #     pygame.time.delay(100)
+    #     pygame.display.flip()

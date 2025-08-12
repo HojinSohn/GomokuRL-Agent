@@ -1,4 +1,5 @@
 from collections import deque
+import os
 
 import numpy as np
 from mcts import MCTS
@@ -40,10 +41,9 @@ class DQNAgent():
         self.optimizer1 = torch.optim.Adam(self.model1.parameters(), lr=self.learning_rate)
         self.optimizer2 = torch.optim.Adam(self.model2.parameters(), lr=self.learning_rate)
 
-        # Good for Q-learning (Huber loss - robust to outliers)
         self.criterion = nn.SmoothL1Loss()
 
-        self.mcts = MCTS(iterations=10)
+        self.mcts = MCTS(iterations=50)
 
     def swap_players(self):
         """
@@ -61,26 +61,26 @@ class DQNAgent():
 
         for i, state in enumerate(states):
             state_array = np.array(state)
-            input_tensor[i, 0] = (state_array == 1).astype(np.float32)    # Player 1 stones
-            input_tensor[i, 1] = (state_array == -1).astype(np.float32)   # Player 2 stones
+            input_tensor[i, 0] = (state_array == 1).astype(np.float32)    # Player's stones
+            input_tensor[i, 1] = (state_array == -1).astype(np.float32)   # Opponent's stones
             input_tensor[i, 2] = (state_array != 0).astype(np.float32)    # Non Empty cells
 
         return torch.from_numpy(input_tensor).to(device)
 
-    def get_action(self, state, turn : int):
+    def get_action(self, gomokuEnv, turn : int):
         if torch.rand(1).item() < self.epsilon:
             # Exploration: choose a random action
             # currently returns a random action from the action space
-            return self.mcts.get_action(np.array(state[turn]))
+            return self.mcts.get_action(gomokuEnv.state[turn])
         else:
             # Exploitation: choose the best action from the model
             with torch.no_grad():
                 if turn == 0:
-                    input_tensor = self.convert_states_to_3channel([state[turn]], self.device)
+                    input_tensor = self.convert_states_to_3channel([gomokuEnv.state[turn]], self.device)
                     q_values = self.model1(input_tensor)
                 else :
                     # turn == 1
-                    input_tensor = self.convert_states_to_3channel([state[turn]], self.device)
+                    input_tensor = self.convert_states_to_3channel([gomokuEnv.state[turn]], self.device)
                     q_values = self.model2(input_tensor)
                 action = torch.argmax(q_values).item()
             return action
@@ -90,6 +90,31 @@ class DQNAgent():
             self.memory1.append(data)
         else:
             self.memory2.append(data)
+
+    def save_memory(self):
+        """
+        Save the memory to files for later use.
+        """
+        os.makedirs('memories', exist_ok=True)
+        print("Saving memory to files...")
+        np.save('memories/memory1.npy', np.array(self.memory1, dtype=object), allow_pickle=True)
+        np.save('memories/memory2.npy', np.array(self.memory2, dtype=object), allow_pickle=True)
+        print("Memory saved.")
+
+    def load_memory(self):
+        """
+        Load the memory from files.
+        """
+        try:
+            self.memory1 = deque(np.load('memories/memory1.npy', allow_pickle=True).tolist(), maxlen=2000)
+            self.memory2 = deque(np.load('memories/memory2.npy', allow_pickle=True).tolist(), maxlen=2000)
+            print("Memory loaded.")
+        except FileNotFoundError:
+            print("Memory files not found. Starting with empty memory.")
+        except Exception as e:
+            print(f"Error loading memory: {e}")
+            self.memory1 = deque(maxlen=2000)
+            self.memory2 = deque(maxlen=2000)
 
     def save_model(self):
         torch.save(self.model1.state_dict(), 'models/model1.pth')
@@ -123,14 +148,11 @@ class DQNAgent():
         optimizer.step()
 
         return loss.detach().item()
-
-
-    def update_target_model(self):
-        '''
-            This function updates the target model with the weights of the current model.
-            It is called periodically to keep the target model in sync with the current model.
-        '''
-        self.target_model1.load_state_dict(self.model1.state_dict())
-        self.target_model2.load_state_dict(self.model2.state_dict())
-        self.target_model1.eval()
-        self.target_model2.eval()
+    
+    def update_target_model(self, model, target_model):
+        """
+        Update the target model with the weights of the current model.
+        This is called periodically to keep the target model in sync with the current model.
+        """
+        target_model.load_state_dict(model.state_dict())
+        target_model.eval()

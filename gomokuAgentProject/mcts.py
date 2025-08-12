@@ -30,15 +30,19 @@ class MCTS:
 
     def apply_moves_to_board(self, board, moves, initial_player):
         """Apply a sequence of moves to a board, alternating players"""
-        current_board = copy.deepcopy(board)
-        
         for i, move in enumerate(moves):
             if move is not None:
                 row, col = move
                 # Alternate players: initial_player, then -initial_player, etc.
                 player = initial_player if i % 2 == 0 else -initial_player
-                current_board[row][col] = player
-        return current_board
+                board[row][col] = player
+
+    def undo_moves_from_board(self, board, moves, initial_player):
+        """Undo a sequence of moves from a board, alternating players"""
+        for move in moves:
+            if move is not None:
+                row, col = move
+                board[row][col] = 0
     
     def traverse(self, node):
         '''
@@ -51,369 +55,132 @@ class MCTS:
         while node.children:
             node = max(node.children, key=lambda n: n.ucb1())
         return node
-
+    
     def detect_open_three(self, board, player):
-        kernel_h = np.array([[1, 1, 1]])
-        kernel_v = kernel_h.T
-        kernel_d1 = np.eye(3, dtype=int)
-        kernel_d2 = np.fliplr(kernel_d1)
+        """
+        Detects open three and detached three patterns for the given player.
+        Open three: _XXX_ (three consecutive stones with empty ends).
+        Detached three: _X_XX_ or _XX_X_ (three stones with one gap and empty ends).
 
-        player_mask = (board == player).astype(int)
-        empty_mask = (board == 0).astype(int)
-
+        @param board: 15x15 board (2D list/array). 0 = empty, 1 = player, -1 = opponent
+        @param player: Player to check (1 or -1)
+        @return: List of (row, col) tuples for empty cells that complete open/detached three patterns
+        """
+        rows, cols = len(board), len(board[0])
         good_moves = set()
-        # Horizontal
-        conv_h = convolve2d(player_mask, kernel_h, mode='valid')
-        for r in range(conv_h.shape[0]):
-            for c in range(conv_h.shape[1]):
-                if conv_h[r, c] == 3:
-                    # Check ends at (r, c-1) and (r, c+3)
-                    left_end = c - 1
-                    right_end = c + 3
-                    if left_end >= 0 and empty_mask[r, left_end] and right_end < board.shape[1] and empty_mask[r, right_end]:
-                        good_moves.add((r, left_end))
-                        good_moves.add((r, right_end))
+        directions = [(0, 1), (1, 0), (1, 1), (1, -1)]  # Horizontal, vertical, main diag, anti-diag
 
-        # Vertical
-        conv_v = convolve2d(player_mask, kernel_v, mode='valid')
-        for r in range(conv_v.shape[0]):
-            for c in range(conv_v.shape[1]):
-                if conv_v[r, c] == 3:
-                    top_end = r - 1
-                    bottom_end = r + 3
-                    if top_end >= 0 and empty_mask[top_end, c] and bottom_end < board.shape[0] and empty_mask[bottom_end, c]:
-                        good_moves.add((top_end, c))
-                        good_moves.add((bottom_end, c))
+        # Helper function to check if a cell is empty
+        def is_empty(r, c):
+            return 0 <= r < rows and 0 <= c < cols and board[r][c] == 0
 
-        # Diagonal ↘
-        conv_d1 = convolve2d(player_mask, kernel_d1, mode='valid')
-        for r in range(conv_d1.shape[0]):
-            for c in range(conv_d1.shape[1]):
-                if conv_d1[r, c] == 3:
-                    # Check ends diagonally: (r-1, c-1) and (r+3, c+3)
-                    top_left = (r - 1, c - 1)
-                    bottom_right = (r + 3, c + 3)
-                    if 0 <= top_left[0] < board.shape[0] and 0 <= top_left[1] < board.shape[1] and empty_mask[top_left] and \
-                        0 <= bottom_right[0] < board.shape[0] and 0 <= bottom_right[1] < board.shape[1] and empty_mask[bottom_right]:
-                        good_moves.add(top_left)
-                        good_moves.add(bottom_right)
+        # Helper function to check if a cell matches the player
+        def is_player(r, c):
+            return 0 <= r < rows and 0 <= c < cols and board[r][c] == player
 
-        # Anti-diagonal ↙
-        conv_d2 = convolve2d(player_mask, kernel_d2, mode='valid')
-        for r in range(conv_d2.shape[0]):
-            for c in range(conv_d2.shape[1]):
-                if conv_d2[r, c] == 3:
-                    # Check ends anti-diagonally: (r-1, c+3) and (r+3, c-1)
-                    top_right = (r - 1, c + 3)
-                    bottom_left = (r + 3, c - 1)
-                    if 0 <= top_right[0] < board.shape[0] and 0 <= top_right[1] < board.shape[1] and empty_mask[top_right] and \
-                        0 <= bottom_left[0] < board.shape[0] and 0 <= bottom_left[1] < board.shape[1] and empty_mask[bottom_left]:
-                        good_moves.add(top_right)
-                        good_moves.add(bottom_left)
+        for r in range(rows):
+            for c in range(cols):
+                for dr, dc in directions:
+                    # Check open three: _XXX_
+                    if is_player(r, c) and is_player(r + dr, c + dc) and is_player(r + 2*dr, c + 2*dc):
+                        # Check both ends: (r-dr, c-dc) and (r+3*dr, c+3*dc)
+                        left_end = (r - dr, c - dc)
+                        right_end = (r + 3*dr, c + 3*dc)
+                        if is_empty(*left_end) and is_empty(*right_end):
+                            good_moves.add(left_end)
+                            good_moves.add(right_end)
 
-        def check_detached_patterns():
-            """Check for detached patterns using vectorized numpy operations for speed"""
-            
-            # Define the two patterns we're looking for
-            pattern1 = np.array([0, player, 0, player, player, 0])  # _X_XX_
-            pattern2 = np.array([0, player, player, 0, player, 0])  # _XX_X_
-            
-            def find_pattern_matches(segments, pattern):
-                """Vectorized pattern matching"""
-                return np.all(segments == pattern, axis=-1)
-            
-            def check_horizontal_detached():
-                if board.shape[1] < 6:
-                    return
-                    
-                # Extract all horizontal 6-segments
-                segments = []
-                positions = []
-                for r in range(board.shape[0]):
-                    for c in range(board.shape[1] - 5):
-                        segment = board[r, c:c+6]
-                        segments.append(segment)
-                        positions.append((r, c))
-                
-                if not segments:
-                    return
-                    
-                segments = np.array(segments)
-                
-                # Find matches for both patterns
-                matches1 = find_pattern_matches(segments, pattern1)
-                matches2 = find_pattern_matches(segments, pattern2)
-                
-                # Add good moves for pattern 1: _X_XX_
-                for i, match in enumerate(matches1):
-                    if match:
-                        r, c = positions[i]
-                        good_moves.add((r, c))      # First empty
-                        good_moves.add((r, c+2))    # Middle empty  
-                        good_moves.add((r, c+5))    # Last empty
-                
-                # Add good moves for pattern 2: _XX_X_
-                for i, match in enumerate(matches2):
-                    if match:
-                        r, c = positions[i]
-                        good_moves.add((r, c))      # First empty
-                        good_moves.add((r, c+3))    # Middle empty
-                        good_moves.add((r, c+5))    # Last empty
-            
-            def check_vertical_detached():
-                if board.shape[0] < 6:
-                    return
-                    
-                # Extract all vertical 6-segments
-                segments = []
-                positions = []
-                for r in range(board.shape[0] - 5):
-                    for c in range(board.shape[1]):
-                        segment = board[r:r+6, c]
-                        segments.append(segment)
-                        positions.append((r, c))
-                
-                if not segments:
-                    return
-                    
-                segments = np.array(segments)
-                
-                # Find matches for both patterns
-                matches1 = find_pattern_matches(segments, pattern1)
-                matches2 = find_pattern_matches(segments, pattern2)
-                
-                # Add good moves for pattern 1: _X_XX_
-                for i, match in enumerate(matches1):
-                    if match:
-                        r, c = positions[i]
-                        good_moves.add((r, c))      # First empty
-                        good_moves.add((r+2, c))    # Middle empty  
-                        good_moves.add((r+5, c))    # Last empty
-                
-                # Add good moves for pattern 2: _XX_X_
-                for i, match in enumerate(matches2):
-                    if match:
-                        r, c = positions[i]
-                        good_moves.add((r, c))      # First empty
-                        good_moves.add((r+3, c))    # Middle empty
-                        good_moves.add((r+5, c))    # Last empty
-            
-            def check_diagonal_detached():
-                if board.shape[0] < 6 or board.shape[1] < 6:
-                    return
-                    
-                # Extract all main diagonal 6-segments
-                segments = []
-                positions = []
-                for r in range(board.shape[0] - 5):
-                    for c in range(board.shape[1] - 5):
-                        segment = np.array([board[r+i, c+i] for i in range(6)])
-                        segments.append(segment)
-                        positions.append((r, c))
-                
-                if not segments:
-                    return
-                    
-                segments = np.array(segments)
-                matches1 = find_pattern_matches(segments, pattern1)
-                matches2 = find_pattern_matches(segments, pattern2)
-                
-                # Add good moves for pattern 1: _X_XX_
-                for i, match in enumerate(matches1):
-                    if match:
-                        r, c = positions[i]
-                        good_moves.add((r, c))          # First empty
-                        good_moves.add((r+2, c+2))      # Middle empty  
-                        good_moves.add((r+5, c+5))      # Last empty
-                
-                # Add good moves for pattern 2: _XX_X_
-                for i, match in enumerate(matches2):
-                    if match:
-                        r, c = positions[i]
-                        good_moves.add((r, c))          # First empty
-                        good_moves.add((r+3, c+3))      # Middle empty
-                        good_moves.add((r+5, c+5))      # Last empty
-            
-            def check_anti_diagonal_detached():
-                if board.shape[0] < 6 or board.shape[1] < 6:
-                    return
-                    
-                # Extract all anti-diagonal 6-segments
-                segments = []
-                positions = []
-                for r in range(board.shape[0] - 5):
-                    for c in range(5, board.shape[1]):
-                        segment = np.array([board[r+i, c-i] for i in range(6)])
-                        segments.append(segment)
-                        positions.append((r, c))
-                
-                if not segments:
-                    return
-                    
-                segments = np.array(segments)
-                matches1 = find_pattern_matches(segments, pattern1)
-                matches2 = find_pattern_matches(segments, pattern2)
-                
-                # Add good moves for pattern 1: _X_XX_
-                for i, match in enumerate(matches1):
-                    if match:
-                        r, c = positions[i]
-                        good_moves.add((r, c))          # First empty
-                        good_moves.add((r+2, c-2))      # Middle empty  
-                        good_moves.add((r+5, c-5))      # Last empty
-                
-                # Add good moves for pattern 2: _XX_X_
-                for i, match in enumerate(matches2):
-                    if match:
-                        r, c = positions[i]
-                        good_moves.add((r, c))          # First empty
-                        good_moves.add((r+3, c-3))      # Middle empty
-                        good_moves.add((r+5, c-5))      # Last empty
-            
-            check_horizontal_detached()
-            check_vertical_detached() 
-            check_diagonal_detached()
-            check_anti_diagonal_detached()
-        
-        check_detached_patterns()
-        
+                    # Check detached three pattern 1: _X_XX_ (gap at position 2)
+                    if (is_empty(r, c) and is_player(r + dr, c + dc) and is_empty(r + 2*dr, c + 2*dc) and
+                        is_player(r + 3*dr, c + 3*dc) and is_player(r + 4*dr, c + 4*dc) and
+                        is_empty(r + 5*dr, c + 5*dc)):
+                        good_moves.add((r, c))  # First empty
+                        good_moves.add((r + 2*dr, c + 2*dc))  # Middle empty
+                        good_moves.add((r + 5*dr, c + 5*dc))  # Last empty
+
+                    # Check detached three pattern 2: _XX_X_ (gap at position 3)
+                    if (is_empty(r, c) and is_player(r + dr, c + dc) and is_player(r + 2*dr, c + 2*dc) and
+                        is_empty(r + 3*dr, c + 3*dc) and is_player(r + 4*dr, c + 4*dc) and
+                        is_empty(r + 5*dr, c + 5*dc)):
+                        good_moves.add((r, c))  # First empty
+                        good_moves.add((r + 3*dr, c + 3*dc))  # Middle empty
+                        good_moves.add((r + 5*dr, c + 5*dc))  # Last empty
+
         return list(good_moves)
 
-    
     def detect_open_four(self, board, player):
-        kernel_h = np.array([[1, 1, 1, 1]])
-        kernel_v = kernel_h.T
-        kernel_d1 = np.eye(4, dtype=int)
-        kernel_d2 = np.fliplr(kernel_d1)
+        """
+        Detects open four patterns for the given player.
+        Open four: _XXXX_ or _XXXX, XXXX_ (four consecutive stones with at least one empty end).
 
-        player_mask = (board == player).astype(int)
-        empty_mask = (board == 0).astype(int)
-
+        @param board: 15x15 board (2D list/array). 0 = empty, 1 = player, -1 = opponent
+        @param player: Player to check (1 or -1)
+        @return: List of (row, col) tuples for empty cells that complete open four patterns
+        """
+        rows, cols = len(board), len(board[0])
         good_moves = set()
-        # Horizontal
-        conv_h = convolve2d(player_mask, kernel_h, mode='valid')
-        for r in range(conv_h.shape[0]):
-            for c in range(conv_h.shape[1]):
-                if conv_h[r, c] == 4:
-                    # Check ends at (r, c-1) and (r, c+4)
-                    left_end = c - 1
-                    right_end = c + 4
-                    if left_end >= 0 and empty_mask[r, left_end]:
-                        good_moves.add((r, left_end))
-                    if right_end < board.shape[1] and empty_mask[r, right_end]:
-                        good_moves.add((r, right_end))
+        directions = [(0, 1), (1, 0), (1, 1), (1, -1)]  # Horizontal, vertical, main diag, anti-diag
 
-        # Vertical
-        conv_v = convolve2d(player_mask, kernel_v, mode='valid')
-        for r in range(conv_v.shape[0]):
-            for c in range(conv_v.shape[1]):
-                if conv_v[r, c] == 4:
-                    top_end = r - 1
-                    bottom_end = r + 4
-                    if top_end >= 0 and empty_mask[top_end, c]:
-                        good_moves.add((top_end, c))
-                    if bottom_end < board.shape[0] and empty_mask[bottom_end, c]:
-                        good_moves.add((bottom_end, c))
+        # Helper function to check if a cell is empty
+        def is_empty(r, c):
+            return 0 <= r < rows and 0 <= c < cols and board[r][c] == 0
 
-        # Diagonal ↘
-        conv_d1 = convolve2d(player_mask, kernel_d1, mode='valid')
-        for r in range(conv_d1.shape[0]):
-            for c in range(conv_d1.shape[1]):
-                if conv_d1[r, c] == 4:
-                    # Check ends diagonally: (r-1, c-1) and (r+4, c+4)
-                    top_left = (r - 1, c - 1)
-                    bottom_right = (r + 4, c + 4)
-                    if 0 <= top_left[0] < board.shape[0] and 0 <= top_left[1] < board.shape[1]:
-                        if empty_mask[top_left]:
-                            good_moves.add(top_left)
-                    if 0 <= bottom_right[0] < board.shape[0] and 0 <= bottom_right[1] < board.shape[1]:
-                        if empty_mask[bottom_right]:
-                            good_moves.add(bottom_right)
+        # Helper function to check if a cell matches the player
+        def is_player(r, c):
+            return 0 <= r < rows and 0 <= c < cols and board[r][c] == player
 
-        # Anti-diagonal ↙
-        conv_d2 = convolve2d(player_mask, kernel_d2, mode='valid')
-        for r in range(conv_d2.shape[0]):
-            for c in range(conv_d2.shape[1]):
-                if conv_d2[r, c] == 4:
-                    # Check ends anti-diagonally: (r-1, c+4) and (r+4, c-1)
-                    top_right = (r - 1, c + 4)
-                    bottom_left = (r + 4, c - 1)
-                    if 0 <= top_right[0] < board.shape[0] and 0 <= top_right[1] < board.shape[1]:
-                        if empty_mask[top_right]:
-                            good_moves.add(top_right)
-                    if 0 <= bottom_left[0] < board.shape[0] and 0 <= bottom_left[1] < board.shape[1]:
-                        if empty_mask[bottom_left]:
-                            good_moves.add(bottom_left)
-
-        # detached patterns
-        kernel_h = np.array([[1, 1, 1, 1, 1]])
-        kernel_v = kernel_h.T
-        kernel_d1 = np.eye(5, dtype=int)
-        kernel_d2 = np.fliplr(kernel_d1)
-
-        # Horizontal
-        conv_h = convolve2d(board, kernel_h, mode='valid')
-        for r in range(conv_h.shape[0]):
-            for c in range(conv_h.shape[1]):
-                if conv_h[r, c] == 4 * player:
-                    for offset in range(5):
-                        end_col = c + offset
-                        if 0 <= end_col < board.shape[1] and board[r, end_col] == 0:
-                            good_moves.add((r, end_col))
-        # Vertical
-        conv_v = convolve2d(board, kernel_v, mode='valid')
-        for r in range(conv_v.shape[0]):
-            for c in range(conv_v.shape[1]):
-                if conv_v[r, c] == 4 * player:
-                    for offset in range(5):
-                        end_row = r + offset
-                        if 0 <= end_row < board.shape[0] and board[end_row, c] == 0:
-                            good_moves.add((end_row, c))
-
-        # Diagonal ↘
-        conv_d1 = convolve2d(board, kernel_d1, mode='valid')
-        for r in range(conv_d1.shape[0]):
-            for c in range(conv_d1.shape[1]):
-                if conv_d1[r, c] == 4 * player:
-                    for offset in range(5):
-                        end_pos = (r + offset, c + offset)
-                        if 0 <= end_pos[0] < board.shape[0] and 0 <= end_pos[1] < board.shape[1]:
-                            if board[end_pos] == 0:
-                                good_moves.add(end_pos)
-
-        # Anti-diagonal ↙
-        conv_d2 = convolve2d(board, kernel_d2, mode='valid')
-        for r in range(conv_d2.shape[0]):
-            for c in range(conv_d2.shape[1]):
-                if conv_d2[r, c] == 4 * player:
-                    for offset in range(5):
-                        end_pos = (r + offset, c - offset + 4)
-                        if 0 <= end_pos[0] < board.shape[0] and 0 <= end_pos[1] < board.shape[1]:
-                            if board[end_pos] == 0:
-                                good_moves.add(end_pos)
+        for r in range(rows):
+            for c in range(cols):
+                for dr, dc in directions:
+                    # Check open four: _XXXX_ or _XXXX, XXXX_
+                    if (is_player(r, c) and is_player(r + dr, c + dc) and 
+                        is_player(r + 2*dr, c + 2*dc) and is_player(r + 3*dr, c + 3*dc)):
+                        # Check left end: (r-dr, c-dc)
+                        left_end = (r - dr, c - dc)
+                        if is_empty(*left_end):
+                            good_moves.add(left_end)
+                        # Check right end: (r+4*dr, c+4*dc)
+                        right_end = (r + 4*dr, c + 4*dc)
+                        if is_empty(*right_end):
+                            good_moves.add(right_end)
+                    # check open four: XX_XX or XXX_X or X_XXX
+                    elif (is_player(r, c) and is_player(r + dr, c + dc) and 
+                        is_empty(r + 2*dr, c + 2*dc) and is_player(r + 3*dr, c + 3*dc) and is_player(r + 4*dr, c + 4*dc)):
+                        good_moves.add((r + 2*dr, c + 2*dc))  # Add the empty cell in the middle
+                    elif (is_player(r, c) and is_empty(r + dr, c + dc) and 
+                        is_player(r + 2*dr, c + 2*dc) and is_player(r + 3*dr, c + 3*dc) and is_player(r + 4*dr, c + 4*dc)):
+                        good_moves.add((r + dr, c + dc))
+                    elif (is_player(r, c) and is_player(r + dr, c + dc) and is_player(r + 2*dr, c + 2*dc) and 
+                        is_empty(r + 3*dr, c + 3*dc) and is_player(r + 4*dr, c + 4*dc)):
+                        good_moves.add((r + 3*dr, c + 3*dc))
 
         return list(good_moves)
-
-    def get_good_moves2(self, board, current_player):
-        # If good moves are not found, return random empty positions
-        stone_mask = (board != 0).astype(int)
-        # Step 2: Convolve to get neighbor counts
-        kernel = np.array([
-            [1, 1, 1],
-            [1, 0, 1],
-            [1, 1, 1]
-        ])
-        neighbor_counts = convolve2d(stone_mask, kernel, mode='same', boundary='fill', fillvalue=0)
-
-        # Step 3: Mask out non-empty cells
-        empty_mask = (board == 0)
-        valid_scores = neighbor_counts * empty_mask
-
-        # Step 4: Get index with highest value among empty cells
-        max_value = np.max(valid_scores)
-        indices = np.argwhere(valid_scores == max_value)
-        return list(indices)
     
+    def get_reasonable_moves(self, board, last_move=None):
+        # return the empty spots around the last move
+        good_moves = set()
+        if last_move is not None:
+            row, col = last_move
+            # Check the 3x3 area around the last move
+            for dr in range(-1, 2):
+                for dc in range(-1, 2):
+                    r, c = row + dr, col + dc
+                    if 0 <= r < 15 and 0 <= c < 15 and board[r][c] == 0:
+                        good_moves.add((r, c))
+        if len(good_moves) > 0:
+            return list(good_moves)
+        
+        empty_cells = np.argwhere(board[5:10,5:10] == 0)
+        if len(empty_cells) > 0:
+            return list(empty_cells + 5)  # Adjust indices to match the original board size
+        
+        empty_cells = np.argwhere(board[3:12,3:12] == 0)
+        if len(empty_cells) > 0:
+            return list(empty_cells + 3)  # Adjust indices to match the original board size
+
+        empty_cells = np.argwhere(board == 0)
+        return list(empty_cells)  # Return all empty cells if no reasonable moves found
+
     def get_obvious_moves(self, board, current_player):
         '''
             This function generates obvious moves based on the current board state.
@@ -445,14 +212,13 @@ class MCTS:
         '''
             First check the obvious moves. Then check the good moves.
         '''
-
         obvious_moves = self.get_obvious_moves(board, current_player)
         if obvious_moves:
             return obvious_moves
         
-        return self.get_good_moves2(board, current_player)
+        return self.get_reasonable_moves(board)
 
-    def expand(self, node):
+    def expand(self, node, board):
         '''
             This function expands a leaf node by adding child nodes for legal or promising next moves.
             It will be called when a leaf node is reached second time during the traversal.
@@ -460,86 +226,109 @@ class MCTS:
             @param node: Leaf node (board state) to expand
         '''
         # Apply moves to get current board state
-        board = self.apply_moves_to_board(self.board, node.moves, initial_player=self.root.current_player)
-        promising_moves = self.get_good_moves2(board, current_player=node.current_player)
+        self.apply_moves_to_board(board, node.moves, initial_player=self.root.current_player)
+        promising_moves = self.get_reasonable_moves(board)
         promising_moves = np.random.permutation(promising_moves)  # Shuffle the promising moves to add some randomness
 
-        for move in promising_moves[:5]:  # Take first 5
+        if promising_moves.size == 0:
+            print("No promising moves found, returning without expanding.")
+            return
+
+        for move in promising_moves[:4]:  # Take first 3
             child_node = Node(current_player=-node.current_player, parent=node, move=move)
             node.children.append(child_node)
 
-    def check_winner(self, board):
-        '''
-            This function checks if there is a winner in the current board state.
-            It will be called during the rollout to determine if the game is completed.
+        # undo moves to restore the board state
+        self.undo_moves_from_board(board, node.moves, initial_player=self.root.current_player)
 
-            @param board: Current board state (2d array) 15 x 15. 0 = empty, 1 = player, -1 = opponent
-            @return: True if there is a winner, False otherwise
-        '''
-        # Implement logic to check if there is a winner in the current board state
-        direction_vectors = [
-                (1, 0),   # vertical
-                (0, 1),   # horizontal
-                (1, 1),   # diagonal down-right
-                (-1, 1),  # diagonal up-right
-            ]
-        sequence_length = 5
+    def check_winner(self, board, player_just_put, prev_move):
+        """
+        Checks if the player who just moved has won by detecting five consecutive stones
+        including the most recent move.
 
-        for i in range(15):
-            for j in range(15):
-                for dx, dy in direction_vectors:
-                    for k in [1, -1]:
-                        try:
-                            if all(0 <= i + dx * n < 15 and 0 <= j + dy * n < 15 and board[i + dx * n][j + dy * n] == k for n in range(sequence_length)):
-                                return k
-                        except IndexError:
-                            continue
-        return None  # No winner found
-        
-    def rollout(self, node):
+        @param board: Current board state (2D array) 15x15. 0 = empty, 1 = player, -1 = opponent
+        @param player_just_put: Player who made the most recent move (1 or -1)
+        @param prev_move: Tuple (row, col) of the most recent move
+        @return: player_just_put if they won, None otherwise
+        """
+        rows, cols = board.shape
+        r, c = prev_move
+
+        # Check if the move is valid and belongs to player_just_put
+        if not (0 <= r < rows and 0 <= c < cols and board[r, c] == player_just_put):
+            return None
+
+        # Directions: horizontal, vertical, main diagonal, anti-diagonal
+        directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
+
+        for dr, dc in directions:
+            # Count consecutive stones in both directions (e.g., left and right for horizontal)
+            count = 1  # Include the current move
+            # Forward direction
+            for i in range(1, 5):  # Check up to 4 cells forward
+                nr, nc = r + dr * i, c + dc * i
+                if not (0 <= nr < rows and 0 <= nc < cols and board[nr, nc] == player_just_put):
+                    break
+                count += 1
+            # Backward direction
+            for i in range(1, 5):  # Check up to 4 cells backward
+                nr, nc = r - dr * i, c - dc * i
+                if not (0 <= nr < rows and 0 <= nc < cols and board[nr, nc] == player_just_put):
+                    break
+                count += 1
+            # Check if we have 5 or more consecutive stones
+            if count >= 5:
+                return player_just_put
+
+        return None
+
+    def rollout(self, node, board):
         '''
             This function simulates a random game from the current board state.
             It will be called when a leaf node is reached for the first time during the traversal.
 
             @param node: Leaf node (board state) to simulate
         '''
-        # Get current board state by applying moves
-        current_board = self.apply_moves_to_board(self.board, node.moves, initial_player=self.root.current_player)
+        # Apply the moves to the board state by applying moves
+        applied_moves = node.moves
+        self.apply_moves_to_board(board, node.moves, initial_player=self.root.current_player)
 
         # Determine whose turn it is next
         current_player = node.current_player
 
         # Start the simulation
         result = 0.0
-        MAX_SIMULATION_STEPS = 10  # Limit the number of steps to prevent infinite loops
+        MAX_SIMULATION_STEPS = 30  # Limit the number of steps to prevent infinite loops
+        moves_in_simulation = []
         for _ in range(MAX_SIMULATION_STEPS):
             # Randomly select a move
-            valid_moves = self.get_good_moves(current_board, current_player)
+            valid_moves = self.get_reasonable_moves(board, last_move=moves_in_simulation[-1] if moves_in_simulation else None)
             if not valid_moves:
                 # draw
                 result = 0.5
                 break
-            random_index = np.random.randint(len(valid_moves))
-            row, col = valid_moves[random_index]
-            current_board[row][col] = current_player
+            move = valid_moves[np.random.choice(len(valid_moves))]
+            # Place the piece on the board
+            board[move[0]][move[1]] = current_player
+            moves_in_simulation.append(move)
             # Check if the game is completed
-            winner = self.check_winner(current_board)
+            winner = self.check_winner(board, current_player, move)
             if winner is not None:
-                result = 1 if winner == current_player else -1
+                result = 1
                 break
             # Randomly select a move for the opponent
-            valid_moves = self.get_good_moves(current_board, -1 * current_player)
+            valid_moves = self.get_reasonable_moves(board, last_move=moves_in_simulation[-1] if moves_in_simulation else None)
             if not valid_moves:
                 # draw
                 result = 0.5
                 break
-            random_index = np.random.randint(len(valid_moves))
-            row, col = valid_moves[random_index]
-            current_board[row][col] = -1 * current_player
-            # Check if the game is completed
-            winner = self.check_winner(current_board)
+            move = valid_moves[np.random.choice(len(valid_moves))]
+            board[move[0]][move[1]] = -1 * current_player
+            moves_in_simulation.append(move)
+            # Check if the game is completed by the opponent's move
+            winner = self.check_winner(board, -1 * current_player, move)
             if winner is not None:
-                result = 1 if winner == current_player else -1
+                result = -1
                 break
         node.visits += 1
         node.wins += result
@@ -549,7 +338,9 @@ class MCTS:
             result = -1 * result  # Invert the result for the parent node
             node.parent.wins += result
             node = node.parent
-        
+
+        self.undo_moves_from_board(board, moves_in_simulation, initial_player=self.root.current_player)
+        self.undo_moves_from_board(board, applied_moves, initial_player=self.root.current_player)
 
     def get_action(self, board):
         '''
@@ -567,31 +358,43 @@ class MCTS:
         5. Repeat this select → expand → simulate → backpropagate process for many iterations.
         6. After a set number of iterations, select the child node with the highest visit count as the best action.
         '''
-        self.board = board  # Update the board state
-        current_player = self.get_current_player(self.board)
-        obvious_moves = self.get_obvious_moves(board, current_player)
-        if obvious_moves:
-            obvious_moves = np.random.permutation(obvious_moves)  # Shuffle the obvious moves to add some randomness
-            # If there are obvious moves, return the first one
-            # This is a heuristic to prioritize obvious moves over MCTS
-            return obvious_moves[0][0] * 15 + obvious_moves[0][1]
+        current_player = self.get_current_player(board)
+        # get random value
+        if np.random.rand() < 0.5:
+            # 50% chance to return the best action based on heuristics
+            # Check for obvious moves first
+            obvious_moves = self.get_obvious_moves(board, current_player)
+            if obvious_moves:
+                obvious_moves = np.random.permutation(obvious_moves)  # Shuffle the obvious moves to add some randomness
+                # If there are obvious moves, return the first one
+                # This is a heuristic to prioritize obvious moves over MCTS
+                return obvious_moves[0][0] * 15 + obvious_moves[0][1]
+        
         self.root = Node(current_player=current_player, parent=None, move=None)  # Reset the root node with the current board state
         for it in range(self.iterations):
             # traverse down the tree to a leaf node
             leaf_node = self.traverse(self.root)
             if leaf_node.visits > 0:
                 # If the leaf node has been visited before, expand it
-                self.expand(leaf_node)
+                self.expand(leaf_node, board)
                 children_nodes = leaf_node.children
                 if children_nodes:
                     # Since childrens are just expanded, select one of them randomly
                     selected_node = np.random.choice(children_nodes)
-                    self.rollout(selected_node)
+                    self.rollout(selected_node, board)
+                else:
+                    print("No children nodes found after expansion, this should not happen.")
             else:
                 # If the leaf node has not been visited before, simulate a random game from this state
-                self.rollout(leaf_node)
-        
-        # After all iterations, select the child node with the highest visit count
+                self.rollout(leaf_node, board)
+
+        if len(self.root.children) == 0:
+            print("Root's child node empty....")
+            print("Current board state:")
+            print(board)
+            valid_moves = self.get_reasonable_moves(board=board)
+            return valid_moves[0][0] * 15 + valid_moves[0][1]
+
         best_child = max(self.root.children, key=lambda n: n.visits)
         # Convert the best child's element (board state) to an action
         best_action = best_child.move
@@ -599,7 +402,6 @@ class MCTS:
             return None
         # Convert the best action (row, col) to a single action index
         return best_action[0] * 15 + best_action[1] 
-
 
 # # Example usage and test function
 # def test_open_three_detection():
