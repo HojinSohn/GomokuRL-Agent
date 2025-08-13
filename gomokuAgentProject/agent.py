@@ -1,5 +1,6 @@
 from collections import deque
 from datetime import datetime
+import glob
 import os
 
 import numpy as np
@@ -11,7 +12,7 @@ import random
 from gui_play import GUI
 
 class DQNAgent():
-    def __init__(self, device=torch.device("cpu"), init_epsilon=0.95, load_model=False):
+    def __init__(self, device=torch.device("cpu"), init_epsilon=0.95, load_model=False, load_memory=False):
         self.device = device
 
         self.gamma = 0.99
@@ -38,6 +39,10 @@ class DQNAgent():
         self.target_model2.load_state_dict(self.model2.state_dict())
         self.target_model2.eval()  # Set target model to evaluation mode
         self.memory2 = deque(maxlen=50000)
+
+        if load_memory:
+            print("Loading memory from file...")
+            self.load_memory()
 
         self.optimizer1 = torch.optim.Adam(self.model1.parameters(), lr=self.learning_rate)
         self.optimizer2 = torch.optim.Adam(self.model2.parameters(), lr=self.learning_rate)
@@ -105,19 +110,22 @@ class DQNAgent():
 
     def load_memory(self):
         """
-        Load the memory from files.
+        Load multiple memory files into the agent's memory
         """
-        try:
-            self.memory1 = deque(np.load('memories/memory1.npy', allow_pickle=True).tolist(), maxlen=2000)
-            self.memory2 = deque(np.load('memories/memory2.npy', allow_pickle=True).tolist(), maxlen=2000)
-            print("Memory loaded.")
-        except FileNotFoundError:
-            print("Memory files not found. Starting with empty memory.")
-        except Exception as e:
-            print(f"Error loading memory: {e}")
-            self.memory1 = deque(maxlen=2000)
-            self.memory2 = deque(maxlen=2000)
+        memory1_files = glob.glob("memory/memory1*.npy")
+        for memory_file in memory1_files:
+            print(f"Loading memory from {memory_file}...")
+            data = np.load(memory_file, allow_pickle=True)
+            print(f"Loaded {len(data)} entries into memory1.")
+            self.memory1.extend(data)  # assuming memory1 is a list
 
+        memory2_files = glob.glob("memory/memory2*.npy")
+        for memory_file in memory2_files:
+            print(f"Loading memory from {memory_file}...")
+            data = np.load(memory_file, allow_pickle=True)
+            print(f"Loaded {len(data)} entries into memory2.")
+            self.memory2.extend(data)  # assuming memory2 is a list
+            
     def save_model(self):
         torch.save(self.model1.state_dict(), 'models/model1.pth')
         torch.save(self.model2.state_dict(), 'models/model2.pth')
