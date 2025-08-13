@@ -6,6 +6,7 @@ import torch
 import argparse
 
 def collect_episodes(gomokuEnv: GomokuEnv, agent: DQNAgent, max_episodes: int):
+    print("Collecting data for training...")
     player1_wins = 0
     player2_wins = 0
 
@@ -43,7 +44,10 @@ def collect_episodes(gomokuEnv: GomokuEnv, agent: DQNAgent, max_episodes: int):
             # gui.draw_board(gomokuEnv.state[0])
             current_turn = total_turns & 1  
 
-            action = agent.get_action(gomokuEnv, current_turn, not_tactical_player)
+            # check if the player at the current turn is not tactical
+            is_not_tactical = not_tactical_player == current_turn
+
+            action = agent.get_action(gomokuEnv, current_turn, is_not_tactical)
 
             # Take the action in the environment
             current_state_record, next_state_record, completed, reward, valid_move = gomokuEnv.step(action, current_turn)
@@ -147,11 +151,26 @@ def collect_episodes(gomokuEnv: GomokuEnv, agent: DQNAgent, max_episodes: int):
 
 def train_agent(gomokuEnv: GomokuEnv, agent: DQNAgent, num_training: int, update_model_interval: int):
     print("Training DQN Agent: Size of memory1:", len(agent.memory1), "Size of memory2:", len(agent.memory2))
+    loss1_sum = 0
+    loss2_sum = 0
     for i in range(num_training):
         if i % update_model_interval == 0:
-            agent.update_target_model()
-        agent.train_model(agent.model1, agent.target_model1, agent.memory1, agent.optimizer1)
-        agent.train_model(agent.model2, agent.target_model2, agent.memory2, agent.optimizer2)
+            agent.update_target_model(agent.model1, agent.target_model1)
+            agent.update_target_model(agent.model2, agent.target_model2)
+            print(f"Updated target models at training iteration {i}")
+        loss1 = agent.train_model(agent.model1, agent.target_model1, agent.memory1, agent.optimizer1)
+        loss2 = agent.train_model(agent.model2, agent.target_model2, agent.memory2, agent.optimizer2)
+        if loss1 is not None:
+            loss1_sum += loss1
+        if loss2 is not None:
+            loss2_sum += loss2
+        if i % 100 == 0:
+            print(f"Training iteration {i}: Loss1: {loss1_sum / 100 if i > 0 else loss1}, Loss2: {loss2_sum / 100 if i > 0 else loss2}")
+            loss1_sum = 0
+            loss2_sum = 0
+
+    print("Training completed. Final model saved.")
+    agent.save_model()
 
 def run_and_learn(gomokuEnv: GomokuEnv, agent: DQNAgent, max_episodes: int, update_model_interval: int, epsilon_decay_interval: int, start_training_episode, saving_interval= 100):
     recent_losses_p1 = []

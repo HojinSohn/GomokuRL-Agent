@@ -65,18 +65,16 @@ class MCTS:
     
     
     def get_reasonable_moves(self, board, current_player, last_move=None):
-        # return any empty cells adjacent to stones
+        # return any empty cells in the center 5x5 area
         rows, cols = board.shape
-        empty_cells = set()
-        directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
-        for r in range(rows):
-            for c in range(cols):
-                if board[r, c] != 0:
-                    for dr, dc in directions:
-                        nr, nc = r + dr, c + dc
-                        if 0 <= nr < rows and 0 <= nc < cols and board[nr, nc] == 0:
-                            empty_cells.add((nr, nc))
-        return list(map(tuple, empty_cells))
+        center_rows = range(max(0, rows // 2 - 2), min(rows, rows // 2 + 3))
+        center_cols = range(max(0, cols // 2 - 2), min(cols, cols // 2 + 3))
+        empty_cells = [(r, c) for r in center_rows for c in center_cols if board[r, c] == 0]
+
+        if not empty_cells:
+            # If no empty cells in the center, return all empty cells
+            empty_cells = [(r, c) for r in range(rows) for c in range(cols) if board[r, c] == 0]
+        return empty_cells
 
     def get_obvious_moves(self, board, current_player):
         '''

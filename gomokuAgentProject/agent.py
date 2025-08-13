@@ -29,7 +29,7 @@ class DQNAgent():
         self.target_model1 = Model().to(device)
         self.target_model1.load_state_dict(self.model1.state_dict())
         self.target_model1.eval()  # Set target model to evaluation mode
-        self.memory1 = deque(maxlen=50000)
+        self.memory1 = deque(maxlen=80000)
 
         self.model2 = Model().to(device)
         if load_model:
@@ -38,7 +38,7 @@ class DQNAgent():
         self.target_model2 = Model().to(device)
         self.target_model2.load_state_dict(self.model2.state_dict())
         self.target_model2.eval()  # Set target model to evaluation mode
-        self.memory2 = deque(maxlen=50000)
+        self.memory2 = deque(maxlen=80000)
 
         if load_memory:
             print("Loading memory from file...")
@@ -112,14 +112,14 @@ class DQNAgent():
         """
         Load multiple memory files into the agent's memory
         """
-        memory1_files = glob.glob("memory/memory1*.npy")
+        memory1_files = glob.glob("memories/memory1*.npy")
         for memory_file in memory1_files:
             print(f"Loading memory from {memory_file}...")
             data = np.load(memory_file, allow_pickle=True)
             print(f"Loaded {len(data)} entries into memory1.")
             self.memory1.extend(data)  # assuming memory1 is a list
 
-        memory2_files = glob.glob("memory/memory2*.npy")
+        memory2_files = glob.glob("memories/memory2*.npy")
         for memory_file in memory2_files:
             print(f"Loading memory from {memory_file}...")
             data = np.load(memory_file, allow_pickle=True)

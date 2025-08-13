@@ -9,9 +9,10 @@ class Model(nn.Module):
     def __init__(self):
         super(Model, self).__init__()
         self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1)  # keeps size
-        self.conv2 = nn.Conv2d(16, 8, kernel_size=3, stride=1, padding=1)  # keeps size
-        self.conv3 = nn.Conv2d(8, 8, kernel_size=3, stride=1, padding=1)  # keeps size
-        self.fc1 = nn.Linear(8 * 9 * 9, 128)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)  # keeps size
+        self.conv3 = nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1)  # keeps size
+        self.conv4 = nn.Conv2d(32, 16, kernel_size=3, stride=1, padding=1)  # keeps size
+        self.fc1 = nn.Linear(16 * 9 * 9, 128)
         self.fc2 = nn.Linear(128, action_size)
         self._initialize_weights()
         
@@ -36,6 +37,7 @@ class Model(nn.Module):
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
+        x = F.relu(self.conv4(x))
         x = x.view(x.size(0), -1)  # flatten dynamically
         x = F.relu(self.fc1(x))
         x = self.fc2(x)

@@ -19,11 +19,11 @@ class Agent(object):
         
         # # load the model
         self.model = Model() 
-        # if turn == -1:
-        #     self.model.load_state_dict(torch.load('models/model1.pth', map_location=torch.device('cpu')))
-        # else:
-        #     self.model.load_state_dict(torch.load('models/model2.pth', map_location=torch.device('cpu')))
-        # self.model.eval()
+        if turn == -1:
+            self.model.load_state_dict(torch.load('models/model1.pth', map_location=torch.device('cpu')))
+        else:
+            self.model.load_state_dict(torch.load('models/model2.pth', map_location=torch.device('cpu')))
+        self.model.eval()
 
     def make_move_mcts(self, state, random):
         print("Agent is making a move using MCTS")
@@ -84,34 +84,34 @@ if __name__ == "__main__":
     gui = GUI()
     env = GomokuEnv()
     turn = 0  # Start with player 1
-    agent = Agent(-1) # Agent plays second (white stones)
+    agent = Agent(0)  # Agent plays first (black stones)
 
-    # dqnAgent = DQNAgent()
-    # dqnAgent.load_memory()  # Load the agent's memory if available 
-    # clock = pygame.time.Clock()
+    dqnAgent = DQNAgent()
+    dqnAgent.load_memory()  # Load the agent's memory if available 
+    clock = pygame.time.Clock()
 
-    # print(len(dqnAgent.memory1), "samples loaded from memory")
+    print(len(dqnAgent.memory1), "samples loaded from memory")
 
-    # for i, sample in enumerate(dqnAgent.memory1):
-    #     state, action, reward, next_state, done = sample[0], sample[1], sample[2], sample[3], sample[4]
-    #     board = np.array(state)
-    #     next_board = np.array(next_state)
-    #     print(f"Sample state {i}: {board}")
-    #     print(f"Sample next state {i}: {next_board}")
-    #     print(f"Action: {action}, Reward: {reward}, Done: {done}")
+    for i, sample in enumerate(dqnAgent.memory1):
+        state, action, reward, next_state, done = sample[0], sample[1], sample[2], sample[3], sample[4]
+        board = np.array(state)
+        next_board = np.array(next_state)
+        print(f"Sample state {i}: {board}")
+        print(f"Sample next state {i}: {next_board}")
+        print(f"Action: {action}, Reward: {reward}, Done: {done}")
 
-    #     # Handle pygame events first
-    #     for event in pygame.event.get():
-    #         if event.type == pygame.QUIT:
-    #             pygame.quit()
-    #             sys.exit()
+        # Handle pygame events first
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
         
-    #     pygame.time.wait(4000)
-    #     gui.draw_board(board)  # Draw the board
+        pygame.time.wait(500)
+        gui.draw_board(board)  # Draw the board
         
-    #     # Wait 1 second using clock (non-blocking)
-    #     pygame.time.wait(1000)
-    #     gui.draw_board(next_board)  # Draw the board
+        # Wait 1 second using clock (non-blocking)
+        pygame.time.wait(500)
+        gui.draw_board(next_board)  # Draw the board
 
     done = False
     while not done:
@@ -124,7 +124,8 @@ if __name__ == "__main__":
         if turn % 2 == 1:
             # Agent's turn
             print("Agent 1's turn")
-            action = agent.make_move_mcts(env.state[0], False)
+            print("Current state:", env.state[0])
+            action = agent.make_move(env.state[0])
             env.step(action, 1)
             row, col = divmod(action, 9)
             env.update_state(1, action)
@@ -136,21 +137,21 @@ if __name__ == "__main__":
                 done = True
             turn += 1
         else:
-            print("Agent 2's turn")
-            action = agent.make_move_mcts(env.state[0], True)
-            env.step(action, 0)
-            row, col = divmod(action, 9)
-            env.update_state(0, action)
-            print(f"Agent 2 placed stone at ({row}, {col})")
-            gui.draw_board(env.state[0])
-            win = env.check_winner(env.state[0], (row, col))
-            if win:
-                print("Agent 2 wins!")
-                done = True
-            turn += 1
+            # print("Agent 2's turn")
+            # action = agent.make_move_mcts(env.state[0], True)
+            # env.step(action, 0)
+            # row, col = divmod(action, 9)
+            # env.update_state(0, action)
+            # print(f"Agent 2 placed stone at ({row}, {col})")
+            # gui.draw_board(env.state[0])
+            # win = env.check_winner(env.state[0], (row, col))
+            # if win:
+            #     print("Agent 2 wins!")
+            #     done = True
+            # turn += 1
             print("Waiting for player's move...")
 
-            move_made = True
+            move_made = False
             while not move_made:
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
