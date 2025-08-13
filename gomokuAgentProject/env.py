@@ -1,6 +1,5 @@
 import copy
 import numpy as np
-from scipy.signal import convolve2d
 
 rewards = {"win" : 1.0, "lose" : -1.0, "step" : 0.001, "invalid" : -0.5}
 

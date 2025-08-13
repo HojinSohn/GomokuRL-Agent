@@ -2,7 +2,6 @@
 import random
 import numpy as np
 import copy
-from scipy.signal import convolve2d
 class Node:
     def __init__(self, current_player, parent=None, move=None):
         self.parent = parent

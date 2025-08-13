@@ -16,6 +16,7 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon_decay_interval", type=int, default=100, help="Number of episodes to decay epsilon")
     parser.add_argument("--load_memory", type=lambda x: (str(x).lower() == 'true'), default=False, help="Load memory from file or not")
     parser.add_argument("--start_training_episode", type=int, default=500, help="Episode to start training")
+    parser.add_argument("--data_collecting_mode", type=lambda x: (str(x).lower() == 'true'), help="Enable data collecting mode")
 
     args = parser.parse_args()
 
@@ -24,7 +25,7 @@ if __name__ == "__main__":
     START_TRAINING_EPISODE = args.start_training_episode  # Start training after specified episode
     EPSILON_DECAY_INTERVAL = args.epsilon_decay_interval  # Decay epsilon every specified interval
     SAVING_INTERVAL = 100  # Save model every 100 episodes
-    
+    DATA_COLLECTION_MODE = args.data_collecting_mode
 
     # get arg to check whether to use GUI or not
     print(f"Using device: {device}")
@@ -45,12 +46,14 @@ if __name__ == "__main__":
     for episode in range(max_episodes):
         if episode < 101:
             print(f"Episode {episode} - Simulating game...")
-            if episode == 10:
-                # for checkpointing the model
-                agent.save_memory()
-        if (episode + 1) % 500 == 0:
+        if DATA_COLLECTION_MODE and (episode + 1) % 100 == 0:
             print(f"Saving memory at episode {episode}")
+            print(f"len(agent.memory1): {len(agent.memory1)}")
+            print(f"len(agent.memory2): {len(agent.memory2)}")
             agent.save_memory()
+            # clear memory
+            agent.memory1.clear()
+            agent.memory2.clear()
         if episode > START_TRAINING_EPISODE and episode % SAVING_INTERVAL == 0:
             # checkpoint the model
             print(f"Saving model at episode {episode}")
