@@ -6,8 +6,8 @@ rewards = {"win" : 1.0, "lose" : -1.0, "step" : 0.001, "invalid" : -0.5}
 
 class GomokuEnv:
     def __init__(self):
-        self.size = 15
-        self.state = {0: np.zeros((15, 15)), 1: np.zeros((15, 15))}
+        self.size = 9
+        self.state = {0: np.zeros((9, 9)), 1: np.zeros((9, 9))}
         # Directional kernels to detect 5-in-a-row
         self.kernels = [
             np.ones((1, 5)),           # Horizontal
@@ -17,14 +17,14 @@ class GomokuEnv:
         ]
 
     def reset(self):
-        self.state = {0: np.zeros((15, 15)), 1: np.zeros((15, 15))}
+        self.state = {0: np.zeros((9, 9)), 1: np.zeros((9, 9))}
 
     def display(self, turn):
-        for row in range(15):
-            print(" ".join(str(self.state[turn][row, col]) for col in range(15)))
+        for row in range(9):
+            print(" ".join(str(self.state[turn][row, col]) for col in range(9)))
 
     def first_move(self):
-        center = 7
+        center = self.size // 2
         self.state[0][center, center] = 1
         self.state[1][center, center] = -1
 
@@ -64,7 +64,7 @@ class GomokuEnv:
     
     # Perform an action and return the new state, whether the game is completed, reward, and whether the action was valid
     def step(self, action, turn):
-        row, col = divmod(action, 15)
+        row, col = divmod(action, 9)
         if self.state[turn][row, col] != 0:
             return self.state[turn].copy(), self.state[turn].copy(), False, rewards["invalid"], False
         
@@ -81,7 +81,7 @@ class GomokuEnv:
         return self.state[turn].copy(), next_state, completed, reward, True
 
     def update_state(self, turn, action):
-        row, col = divmod(action, 15)
+        row, col = divmod(action, 9)
         self.state[turn][row, col] = 1
         # Update the opponent's state
         opponent_turn = 1 - turn
@@ -93,7 +93,7 @@ class GomokuEnv:
 #     env.reset()
 
 #     # Player 1 vertical line at column 7 (rows 7,8,9,10,11)
-#     moves_p1 = [7*15 + 7, 8*15 + 7, 9*15 + 7, 10*15 + 7, 11*15 + 7]
+#     moves_p1 = [7*9 + 7, 8*9 + 7, 9*9 + 7, 10*9 + 7, 11*9 + 7]
 #     for move in moves_p1:
 #         should_succeed = env.step(move, 0)
 #         print(f"Attempting to place at {move} for Player 1: {should_succeed}")
@@ -115,7 +115,7 @@ class GomokuEnv:
 #     env.reset()
 
 #     # Player 1 horizontal line at row 7 (columns 7,8,9,10,11)
-#     moves_p1 = [7*15 + 7, 7*15 + 8, 7*15 + 9, 7*15 + 10, 7*15 + 11]
+#     moves_p1 = [7*9 + 7, 7*9 + 8, 7*9 + 9, 7*9 + 10, 7*9 + 11]
 #     for move in moves_p1:
 #         env.step(move, 0)
 
@@ -134,7 +134,7 @@ class GomokuEnv:
 #     env.reset()
 
 #     # Player 2 diagonal line (positions: (5,5), (6,6), (7,7), (8,8), (9,9))
-#     moves_p2 = [5*15 + 5, 6*15 + 6, 7*15 + 7, 8*15 + 8, 9*15 + 9]
+#     moves_p2 = [5*9 + 5, 6*9 + 6, 7*9 + 7, 8*9 + 8, 9*9 + 9]
 #     for move in moves_p2:
 #         env.step(move, 1)
 
@@ -153,7 +153,7 @@ class GomokuEnv:
 #     env.reset()
 
 #     # Player 2 diagonal line (positions: (7,7), (6,8), (5,9), (4,10), (3,11))
-#     moves_p2 = [7*15 + 7, 6*15 + 8, 5*15 + 9, 4*15 + 10, 3*15 + 11]
+#     moves_p2 = [7*9 + 7, 6*9 + 8, 5*9 + 9, 4*9 + 10, 3*9 + 11]
 #     for move in moves_p2:
 #         env.step(move, 1)
 

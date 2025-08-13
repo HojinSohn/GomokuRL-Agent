@@ -2,7 +2,7 @@ import pygame
 import sys
 
 # Settings
-BOARD_SIZE = 15
+BOARD_SIZE = 9
 CELL_SIZE = 40
 MARGIN = 20
 WINDOW_SIZE = BOARD_SIZE * CELL_SIZE + MARGIN * 2

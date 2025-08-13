@@ -1,4 +1,5 @@
 from collections import deque
+from datetime import datetime
 import os
 
 import numpy as np
@@ -27,7 +28,7 @@ class DQNAgent():
         self.target_model1 = Model().to(device)
         self.target_model1.load_state_dict(self.model1.state_dict())
         self.target_model1.eval()  # Set target model to evaluation mode
-        self.memory1 = deque(maxlen=2000)
+        self.memory1 = deque(maxlen=50000)
 
         self.model2 = Model().to(device)
         if load_model:
@@ -36,7 +37,7 @@ class DQNAgent():
         self.target_model2 = Model().to(device)
         self.target_model2.load_state_dict(self.model2.state_dict())
         self.target_model2.eval()  # Set target model to evaluation mode
-        self.memory2 = deque(maxlen=2000)
+        self.memory2 = deque(maxlen=50000)
 
         self.optimizer1 = torch.optim.Adam(self.model1.parameters(), lr=self.learning_rate)
         self.optimizer2 = torch.optim.Adam(self.model2.parameters(), lr=self.learning_rate)
@@ -57,7 +58,7 @@ class DQNAgent():
 
     def convert_states_to_3channel(self, states, device):
         batch_size = len(states)
-        input_tensor = np.zeros((batch_size, 3, 15, 15), dtype=np.float32)
+        input_tensor = np.zeros((batch_size, 3, 9, 9), dtype=np.float32)
 
         for i, state in enumerate(states):
             state_array = np.array(state)
@@ -67,11 +68,11 @@ class DQNAgent():
 
         return torch.from_numpy(input_tensor).to(device)
 
-    def get_action(self, gomokuEnv, turn : int):
+    def get_action(self, gomokuEnv, turn : int, not_tactical=False):
         if torch.rand(1).item() < self.epsilon:
             # Exploration: choose a random action
             # currently returns a random action from the action space
-            return self.mcts.get_action(gomokuEnv.state[turn])
+            return self.mcts.get_action(gomokuEnv.state[turn], not_tactical=not_tactical)
         else:
             # Exploitation: choose the best action from the model
             with torch.no_grad():
@@ -95,10 +96,11 @@ class DQNAgent():
         """
         Save the memory to files for later use.
         """
+        date_time = datetime.now().strftime("%Y%m%d_%H%M%S")
         os.makedirs('memories', exist_ok=True)
         print("Saving memory to files...")
-        np.save('memories/memory1.npy', np.array(self.memory1, dtype=object), allow_pickle=True)
-        np.save('memories/memory2.npy', np.array(self.memory2, dtype=object), allow_pickle=True)
+        np.save(f'memories/memory1_{date_time}.npy', np.array(self.memory1, dtype=object), allow_pickle=True)
+        np.save(f'memories/memory2_{date_time}.npy', np.array(self.memory2, dtype=object), allow_pickle=True)
         print("Memory saved.")
 
     def load_memory(self):

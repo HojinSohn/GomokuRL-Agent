@@ -19,7 +19,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    UPDATE_MODEL_INTERVAL = 50  # Update target model every 50 episodes
+    UPDATE_MODEL_INTERVAL = 200  # Update target model every 200 episodes
     LOGGING_INTERVAL = 100  # Print every 100 episodes
     START_TRAINING_EPISODE = args.start_training_episode  # Start training after specified episode
     EPSILON_DECAY_INTERVAL = args.epsilon_decay_interval  # Decay epsilon every specified interval
@@ -45,6 +45,12 @@ if __name__ == "__main__":
     for episode in range(max_episodes):
         if episode < 101:
             print(f"Episode {episode} - Simulating game...")
+            if episode == 10:
+                # for checkpointing the model
+                agent.save_memory()
+        if (episode + 1) % 500 == 0:
+            print(f"Saving memory at episode {episode}")
+            agent.save_memory()
         if episode > START_TRAINING_EPISODE and episode % SAVING_INTERVAL == 0:
             # checkpoint the model
             print(f"Saving model at episode {episode}")
@@ -53,14 +59,14 @@ if __name__ == "__main__":
             agent.save_memory()
             avg_loss_p1 = sum(recent_losses_p1) / len(recent_losses_p1) if recent_losses_p1 else 0
             avg_loss_p2 = sum(recent_losses_p2) / len(recent_losses_p2) if recent_losses_p2 else 0
-            print(f"Average loss over last {20} episodes: Player 1: {avg_loss_p1:.4f}, Player 2: {avg_loss_p2:.4f}")
+            print(f"Average loss over last {SAVING_INTERVAL} episodes: Player 1: {avg_loss_p1:.4f}, Player 2: {avg_loss_p2:.4f}")
             recent_losses_p1 = []
             recent_losses_p2 = []
 
         if episode > START_TRAINING_EPISODE and episode % UPDATE_MODEL_INTERVAL == 0:
             agent.update_target_model(agent.model1, agent.target_model1)
             agent.update_target_model(agent.model2, agent.target_model2)
-            
+
         if episode % LOGGING_INTERVAL == 0 and episode > 0:
             print(f"Player 1 wins: {player1_wins}, Player 2 wins: {player2_wins}")
             player1_wins = 0
@@ -82,11 +88,14 @@ if __name__ == "__main__":
         player2_samples = []
         winner = None
 
-        while move_count < 150:  # 15x15 board, max 150 turns
+        # toggle between 0 and 1 to represent which player plays random move (not tactical) each episode
+        not_tactical_player = episode & 1
+
+        while move_count < 70:  # 9x9 board, max 70 turns
             # gui.draw_board(gomokuEnv.state[0])
             current_turn = total_turns & 1  
 
-            action = agent.get_action(gomokuEnv, current_turn)
+            action = agent.get_action(gomokuEnv, current_turn, not_tactical_player)
 
             # Take the action in the environment
             current_state_record, next_state_record, completed, reward, valid_move = gomokuEnv.step(action, current_turn)
@@ -120,7 +129,7 @@ if __name__ == "__main__":
                 for i in range(bad_move_start, num_moves):
                     # Scale linearly: earlier moves get smaller negative reward
                     relative_i = i - bad_move_start
-                    negative_reward = -1 * ((relative_i + 1) / denom)
+                    negative_reward = -2 * ((relative_i + 1) / denom)
                     player2_samples[i] = (
                         player2_samples[i][0],
                         player2_samples[i][1],
@@ -135,7 +144,7 @@ if __name__ == "__main__":
                     # update the reward for the last 5 moves only if the move was valid
                     if player1_samples[i][2] > 0:
                         relative_i = i - good_move_start
-                        positive_reward = 1 * ((relative_i + 1) / denom)
+                        positive_reward = 2 * ((relative_i + 1) / denom)
                         player1_samples[i] = (
                             player1_samples[i][0],
                             player1_samples[i][1],
@@ -149,7 +158,7 @@ if __name__ == "__main__":
                 denom = max(1, num_moves - bad_move_start)  # Avoid division by zero
                 for i in range(bad_move_start, num_moves):
                     relative_i = i - bad_move_start
-                    negative_reward = -1 * ((relative_i + 1) / denom)
+                    negative_reward = -2 * ((relative_i + 1) / denom)
                     player1_samples[i] = (
                         player1_samples[i][0],
                         player1_samples[i][1],
@@ -164,7 +173,7 @@ if __name__ == "__main__":
                 for i in range(good_move_start, num_moves):
                     if player2_samples[i][2] > 0:
                         relative_i = i - good_move_start
-                        positive_reward = 1 * ((relative_i + 1) / denom)
+                        positive_reward = 2 * ((relative_i + 1) / denom)
                         player2_samples[i] = (
                             player2_samples[i][0],
                             player2_samples[i][1],
