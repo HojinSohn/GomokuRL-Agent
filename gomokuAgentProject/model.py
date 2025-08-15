@@ -4,42 +4,61 @@ import torch.nn.functional as F
 import torch
 
 action_size = 9 * 9
+class ResidualBlock(nn.Module):
+    def __init__(self, channels):
+        super(ResidualBlock, self).__init__()
+        self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(channels)
+        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(channels)
+
+    def forward(self, x):
+        identity = x
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += identity
+        return F.relu(out)
 
 class Model(nn.Module):
     def __init__(self):
         super(Model, self).__init__()
-        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1)  # keeps size
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)  # keeps size
-        self.conv3 = nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1)  # keeps size
-        self.conv4 = nn.Conv2d(32, 16, kernel_size=3, stride=1, padding=1)  # keeps size
-        self.fc1 = nn.Linear(16 * 9 * 9, 128)
-        self.fc2 = nn.Linear(128, action_size)
+        # Initial convolution to go from 3 channels → 64 channels
+        self.conv_in = nn.Conv2d(3, 64, kernel_size=3, padding=1)
+        self.bn_in = nn.BatchNorm2d(64)
+
+        # Stack of residual blocks (deep but small)
+        self.res_layers = nn.Sequential(
+            ResidualBlock(64),
+            ResidualBlock(64),
+            ResidualBlock(64),
+            ResidualBlock(64),
+            ResidualBlock(64),
+            ResidualBlock(64),
+            ResidualBlock(64),
+            ResidualBlock(64)
+        )
+
+        # Output layers
+        self.fc1 = nn.Linear(64 * 9 * 9, 256)
+        self.fc2 = nn.Linear(256, action_size)
+
         self._initialize_weights()
-        
+
     def _initialize_weights(self):
-        """Initialize weights to produce smaller initial Q-values"""
         for module in self.modules():
             if isinstance(module, nn.Conv2d):
-                # Xavier initialization with small gain for conv layers
                 nn.init.xavier_uniform_(module.weight, gain=0.1)
                 if module.bias is not None:
                     nn.init.constant_(module.bias, 0.0)
-            
             elif isinstance(module, nn.Linear):
-                if module == self.fc2:  # Final layer (Q-value output)
-                    nn.init.xavier_uniform_(module.weight, gain=0.01)  # Extra small
-                    nn.init.constant_(module.bias, 0.0)
-                else:
-                    nn.init.xavier_uniform_(module.weight, gain=0.1)
-                    nn.init.constant_(module.bias, 0.0)
+                gain = 0.01 if module == self.fc2 else 0.1
+                nn.init.xavier_uniform_(module.weight, gain=gain)
+                nn.init.constant_(module.bias, 0.0)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
-        x = F.relu(self.conv4(x))
-        x = x.view(x.size(0), -1)  # flatten dynamically
+        x = F.relu(self.bn_in(self.conv_in(x)))
+        x = self.res_layers(x)
+        x = x.view(x.size(0), -1)
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
-    
