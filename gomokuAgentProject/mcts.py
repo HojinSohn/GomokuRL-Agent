@@ -21,7 +21,7 @@ class Node:
 
 BOARD_SIZE = 9
 class MCTS:
-    def __init__(self, iterations=10):
+    def __init__(self, iterations=10000):
         self.iterations = iterations
 
     def get_current_player(self, board):
@@ -102,17 +102,6 @@ class MCTS:
             return good_moves
         return []
 
-
-    def get_good_moves(self, board, current_player):
-        '''
-            First check the obvious moves. Then check the good moves.
-        '''
-        obvious_moves = self.get_obvious_moves(board, current_player)
-        if obvious_moves:
-            return obvious_moves
-        
-        return self.get_reasonable_moves(board, current_player)
-
     def expand(self, node, board):
         '''
             This function expands a leaf node by adding child nodes for legal or promising next moves.
@@ -123,12 +112,8 @@ class MCTS:
             @return: New child node added to the tree, or None if no promising moves are available
         '''
         # Apply moves to get current board state
-        promising_moves = None
         board = self.apply_moves_to_board(board, node.moves, initial_player=self.root.current_player)
-        if node.current_player != self.not_tactical_player:
-            promising_moves = self.get_obvious_moves(board, node.current_player)
-        if not promising_moves:
-            promising_moves = self.get_reasonable_moves(board, node.current_player, last_move=node.moves[-1] if node.moves else None)
+        promising_moves = self.get_reasonable_moves(board, node.current_player, last_move=node.moves[-1] if node.moves else None)
         random.shuffle(promising_moves)
 
         if len(promising_moves) == 0:
@@ -240,13 +225,7 @@ class MCTS:
         MAX_SIMULATION_STEPS = 40  # Limit the number of steps to prevent infinite loops
         moves_in_simulation = []
         for _ in range(MAX_SIMULATION_STEPS):
-            valid_moves = None
-            if current_player != self.not_tactical_player:
-                valid_moves = self.get_obvious_moves_light(board, node.current_player, last_move=moves_in_simulation[-1] if moves_in_simulation else None)
-            
-            if valid_moves is None or len(valid_moves) == 0:
-                # Randomly select a move
-                valid_moves = self.get_reasonable_moves(board, current_player, last_move=moves_in_simulation[-1] if moves_in_simulation else None)
+            valid_moves = self.get_reasonable_moves(board, current_player, last_move=moves_in_simulation[-1] if moves_in_simulation else None)
             if not valid_moves:
                 # draw
                 result = 0.5
@@ -262,13 +241,8 @@ class MCTS:
                 result = 1 if winner == self.root.current_player else -1
                 break
 
-            valid_moves = None
-            if current_player != self.not_tactical_player:
-                valid_moves = self.get_obvious_moves_light(board, -1 * current_player, last_move=moves_in_simulation[-1] if moves_in_simulation else None)
-
-            if not valid_moves:
-                # Randomly select a move for the opponent
-                valid_moves = self.get_reasonable_moves(board, -1 * current_player, last_move=moves_in_simulation[-1] if moves_in_simulation else None)
+            # Randomly select a move for the opponent
+            valid_moves = self.get_reasonable_moves(board, -1 * current_player, last_move=moves_in_simulation[-1] if moves_in_simulation else None)
             if not valid_moves:
                 # draw
                 result = 0.5
@@ -312,18 +286,6 @@ class MCTS:
         '''
         # this player will not use tactical moves, so we will not use the get_obvious_moves function
         current_player = self.get_current_player(board)
-        promising_moves = None
-        if not_tactical:
-            self.not_tactical_player = current_player
-        else:
-            self.not_tactical_player = -1 * current_player  # Opponent player for the random player
-            promising_moves = self.get_obvious_moves(board, current_player)
-
-        if promising_moves:
-            # If there are obvious moves, select one randomly
-            move = promising_moves[np.random.choice(len(promising_moves))]
-            return move[0] * 9 + move[1]
-
         self.root = Node(current_player=current_player, parent=None, move=None)  # Reset the root node with the current board state
         for it in range(self.iterations):
             # traverse down the tree to a leaf node

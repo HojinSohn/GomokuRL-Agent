@@ -1,3 +1,7 @@
 python main.py --mode data_collection --max_episodes 5000 --init_epsilon 1.0
 python main.py --mode training --num_training 2000 --updating_interval 200 --load_memory true
 python main.py --mode both --max_episodes 10000 --start_training_episode 500 --init_epsilon 0.95 --epsilon_decay_interval 100 --updating_interval 200
+
+
+
+python train.py --mode training --num_training 5000 --updating_interval 150 --load_memory true
