@@ -19,7 +19,7 @@ class Agent(object):
         
         # # load the model
         self.model = Model() 
-        if turn == -1:
+        if turn == 0:
             self.model.load_state_dict(torch.load('models/model1.pth', map_location=torch.device('cpu')))
         else:
             self.model.load_state_dict(torch.load('models/model2.pth', map_location=torch.device('cpu')))
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     gui = GUI()
     env = GomokuEnv()
     turn = 0  # Start with player 1
-    agent = Agent(0)  # Agent plays first (black stones)
+    agent = Agent(-1)  # Agent plays first (black stones)
 
     # dqnAgent = DQNAgent()
     # dqnAgent.load_memory()  # Load the agent's memory if available 
@@ -125,7 +125,7 @@ if __name__ == "__main__":
             # Agent's turn
             print("Agent 1's turn")
             print("Current state:", env.state[0])
-            action = agent.make_move_mcts(env.state[0])
+            action = agent.make_move(env.state[0])
             env.step(action, 1)
             row, col = divmod(action, 9)
             env.update_state(1, action)

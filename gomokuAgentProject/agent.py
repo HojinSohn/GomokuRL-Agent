@@ -91,61 +91,12 @@ class DQNAgent():
                 action = torch.argmax(q_values).item()
             return action
 
-    def rotate_action90(self, action, k):
-        """
-        Rotate the action index by 90 degrees k times.
-        The action is represented as a single index in a 9x9 grid.
-        """
-        row = action // 9
-        col = action % 9
-        for _ in range(k):
-            # 9 - col == new_row
-            # row == new_col
-            temp = col
-            col = row
-            row = 9 - temp - 1
-        return row * 9 + col
-    
-    def flip_action(self, action):
-        """
-        Flip the action index horizontally.
-        The action is represented as a single index in a 9x9 grid.
-        """
-        row = action // 9
-        col = action % 9
-        
-        new_col = 9 - col - 1
-
-        return row * 9 + new_col
-
-    def get_equivalent_states(self, data):
-        # current_state_record, action, reward, next_state_record, completed
-        equivalent_states = []
-        current_state_record, action, reward, next_state_record, completed = data
-        for i in range(4):
-            # Rotate the current state and next state
-            rotated_current_state = np.rot90(current_state_record, k=i)
-            rotated_next_state = np.rot90(next_state_record, k=i)
-            rotated_action = self.rotate_action90(action, k=i)
-            # Create the equivalent data entry
-            equivalent_data = (rotated_current_state, rotated_action, reward, rotated_next_state, completed)
-            equivalent_states.append(equivalent_data)
-
-            # Also consider flipping the states horizontally
-            flipped_current_state = np.fliplr(rotated_current_state)
-            flipped_next_state = np.fliplr(rotated_next_state)
-            flipped_action = self.flip_action(rotated_action)
-            equivalent_flipped_data = (flipped_current_state, flipped_action, reward, flipped_next_state, completed)
-            equivalent_states.append(equivalent_flipped_data)
-        return equivalent_states
 
     def save_sample(self, data, turn : int):
-        # get equivalent samples and save them in the corresponding memory
-        equivalent_samples = self.get_equivalent_states(data)
         if turn == 0:
-            self.memory1.extend(equivalent_samples)
+            self.memory1.extend(data)
         else:
-            self.memory2.extend(equivalent_samples)
+            self.memory2.extend(data)
 
     def save_memory(self):
         """
@@ -181,34 +132,110 @@ class DQNAgent():
         torch.save(self.model2.state_dict(), 'models/model2.pth')
         print("Models saved.")
 
+    def rotate_action90(self, action, k):
+        """
+        Rotate the action index by 90 degrees k times.
+        The action is represented as a single index in a 9x9 grid.
+        """
+        row = action // 9
+        col = action % 9
+        for _ in range(k):
+            # 9 - col == new_row
+            # row == new_col
+            temp = col
+            col = row
+            row = 9 - temp - 1
+        return row * 9 + col
+
+    def flip_action(self, action):
+        """
+        Flip the action index horizontally.
+        The action is represented as a single index in a 9x9 grid.
+        """
+        row = action // 9
+        col = action % 9
+        
+        new_col = 9 - col - 1
+
+        return row * 9 + new_col
+
+    def get_equivalent_states(self, state, next_state, action):
+        """ Get equivalent states by rotating and flipping the states.
+        """
+        equivalent_states = []
+        for i in range(4):
+            # Rotate the current state and next state for each sample in the batch
+            rotated_state = np.rot90(state, k=i)
+            rotated_next_state = np.rot90(next_state, k=i)
+            rotated_action = self.rotate_action90(action, k=i)
+            equivalent_states.append((rotated_state, rotated_next_state, rotated_action))
+
+            # Also consider flipping the states horizontally
+            flipped_state = np.fliplr(rotated_state)
+            flipped_next_state = np.fliplr(rotated_next_state)
+            flipped_action = self.flip_action(rotated_action)
+            equivalent_states.append((flipped_state, flipped_next_state, flipped_action))
+
+        return equivalent_states
+    
     def train_model(self, model, target_model, memory, optimizer):
         if len(memory) < self.batch_size:
             return
 
         sample = random.sample(memory, self.batch_size)
-        states, actions, rewards, next_states, dones = zip(*sample)
-        
-        input_tensor = self.convert_states_to_3channel(states, self.device)
-        next_state_input_tensor = self.convert_states_to_3channel(next_states, self.device)
-        # states_tensor = torch.from_numpy(np.array(states)).float().unsqueeze(1).to(self.device)
-        actions_tensor = torch.from_numpy(np.array(actions)).long().unsqueeze(1).to(self.device)
-        rewards_tensor = torch.from_numpy(np.array(rewards)).float().to(self.device)
-        # next_states_tensor = torch.from_numpy(np.array(next_states)).float().unsqueeze(1).to(self.device)
-        done_tensor = torch.tensor(dones, dtype=torch.float).to(self.device)
+        _states, _actions, rewards, _next_states, dones = zip(*sample)
 
-        q_inference = model(input_tensor).gather(1, actions_tensor).squeeze(1)
-        q_next = target_model(next_state_input_tensor).detach().max(1)[0]
-        q_target = rewards_tensor + self.gamma * q_next * (1 - done_tensor)
-        loss = self.criterion(q_inference, q_target)
-        # print("Loss:", loss.item())
-        optimizer.zero_grad()
-        loss.backward()
-        # Clip gradients to prevent exploding gradients
-        nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer.step()
+        augmented_samples = []
+        for state, next_state, action, reward, done in zip(_states, _next_states, _actions, rewards, dones):
+            aug_list = self.get_equivalent_states(state, next_state, action)
+            for s, ns, a in aug_list:
+                augmented_samples.append((s, ns, a, reward, done))
 
-        return loss.detach().item()
-    
+        states, next_states, actions, rewards, dones = zip(*augmented_samples)
+        states = np.array(states)
+        next_states = np.array(next_states)
+        actions = np.array(actions)
+        rewards = np.array(rewards, dtype=np.float32)
+        dones = np.array(dones, dtype=np.float32)
+
+        num_batches = (len(states) + self.batch_size - 1) // self.batch_size
+        loss_sum = 0.0
+
+        for b in range(num_batches):
+            start = b * self.batch_size
+            end = start + self.batch_size
+
+            batch_states = states[start:end]
+            batch_next_states = next_states[start:end]
+            batch_actions = actions[start:end]
+            batch_rewards = rewards[start:end]
+            batch_dones = dones[start:end]
+
+            mask_valid_moves = torch.from_numpy(batch_next_states.reshape(len(batch_next_states), -1) != 0) \
+                                .to(torch.bool).to(self.device)
+
+            input_tensor = self.convert_states_to_3channel(batch_states, self.device)
+            next_state_input_tensor = self.convert_states_to_3channel(batch_next_states, self.device)
+            actions_tensor = torch.from_numpy(batch_actions).long().unsqueeze(1).to(self.device)
+            rewards_tensor = torch.from_numpy(batch_rewards).float().to(self.device)
+            done_tensor = torch.from_numpy(batch_dones).float().to(self.device)
+
+            q_inference = model(input_tensor).gather(1, actions_tensor).squeeze(1)
+            q_next = target_model(next_state_input_tensor).detach()
+            q_next = q_next.masked_fill(~mask_valid_moves, float('-inf')).max(1)[0]
+            q_target = rewards_tensor + self.gamma * q_next * (1 - done_tensor)
+            loss = self.criterion(q_inference, q_target)
+
+            optimizer.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+
+            loss_sum += loss.item()
+
+        return loss_sum / num_batches
+
+
     def update_target_model(self, model, target_model):
         """
         Update the target model with the weights of the current model.
