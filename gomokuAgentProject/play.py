@@ -15,7 +15,7 @@ class Agent(object):
         # turn -1 = second
         self.turn = turn
 
-        self.mcts = MCTS(iterations=200)
+        self.mcts = MCTS(iterations=10000)
         
         # # load the model
         self.model = Model() 
@@ -25,7 +25,7 @@ class Agent(object):
             self.model.load_state_dict(torch.load('models/model2.pth', map_location=torch.device('cpu')))
         self.model.eval()
 
-    def make_move_mcts(self, state, random):
+    def make_move_mcts(self, state):
         print("Agent is making a move using MCTS")
 
         # moves = self.mcts.get_obvious_moves(np.array(state), self.turn)
@@ -38,7 +38,7 @@ class Agent(object):
 
         # Run MCTS to get the best move
         board = np.array(copy.deepcopy(state))
-        best_move = self.mcts.get_action(board, random)
+        best_move = self.mcts.get_action(board)
         print(f"Best move found: {best_move}")
         return best_move
     
@@ -86,32 +86,32 @@ if __name__ == "__main__":
     turn = 0  # Start with player 1
     agent = Agent(0)  # Agent plays first (black stones)
 
-    dqnAgent = DQNAgent()
-    dqnAgent.load_memory()  # Load the agent's memory if available 
-    clock = pygame.time.Clock()
+    # dqnAgent = DQNAgent()
+    # dqnAgent.load_memory()  # Load the agent's memory if available 
+    # clock = pygame.time.Clock()
 
-    print(len(dqnAgent.memory1), "samples loaded from memory")
+    # print(len(dqnAgent.memory1), "samples loaded from memory")
 
-    for i, sample in enumerate(dqnAgent.memory1):
-        state, action, reward, next_state, done = sample[0], sample[1], sample[2], sample[3], sample[4]
-        board = np.array(state)
-        next_board = np.array(next_state)
-        print(f"Sample state {i}: {board}")
-        print(f"Sample next state {i}: {next_board}")
-        print(f"Action: {action}, Reward: {reward}, Done: {done}")
+    # for i, sample in enumerate(dqnAgent.memory1):
+    #     state, action, reward, next_state, done = sample[0], sample[1], sample[2], sample[3], sample[4]
+    #     board = np.array(state)
+    #     next_board = np.array(next_state)
+    #     print(f"Sample state {i}: {board}")
+    #     print(f"Sample next state {i}: {next_board}")
+    #     print(f"Action: {action}, Reward: {reward}, Done: {done}")
 
-        # Handle pygame events first
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+    #     # Handle pygame events first
+    #     for event in pygame.event.get():
+    #         if event.type == pygame.QUIT:
+    #             pygame.quit()
+    #             sys.exit()
         
-        pygame.time.wait(500)
-        gui.draw_board(board)  # Draw the board
+    #     pygame.time.wait(500)
+    #     gui.draw_board(board)  # Draw the board
         
-        # Wait 1 second using clock (non-blocking)
-        pygame.time.wait(500)
-        gui.draw_board(next_board)  # Draw the board
+    #     # Wait 1 second using clock (non-blocking)
+    #     pygame.time.wait(500)
+    #     gui.draw_board(next_board)  # Draw the board
 
     done = False
     while not done:
@@ -125,7 +125,7 @@ if __name__ == "__main__":
             # Agent's turn
             print("Agent 1's turn")
             print("Current state:", env.state[0])
-            action = agent.make_move(env.state[0])
+            action = agent.make_move_mcts(env.state[0])
             env.step(action, 1)
             row, col = divmod(action, 9)
             env.update_state(1, action)

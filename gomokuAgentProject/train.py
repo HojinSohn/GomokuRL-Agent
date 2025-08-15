@@ -16,7 +16,7 @@ def collect_episodes(gomokuEnv: GomokuEnv, agent: DQNAgent, max_episodes: int):
             print(f"Episode {episode} - Simulating game...")
 
         # If in data collection mode, save memory every 100 episodes
-        if episode >= 99 and (episode + 1) % 100 == 0:
+        if episode >= 99 and (episode + 1) % 500 == 0:
             print(f"Saving memory at episode {episode}")
             print(f"len(agent.memory1): {len(agent.memory1)}")
             print(f"len(agent.memory2): {len(agent.memory2)}")

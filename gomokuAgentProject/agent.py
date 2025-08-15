@@ -91,11 +91,61 @@ class DQNAgent():
                 action = torch.argmax(q_values).item()
             return action
 
+    def rotate_action90(self, action, k):
+        """
+        Rotate the action index by 90 degrees k times.
+        The action is represented as a single index in a 9x9 grid.
+        """
+        row = action // 9
+        col = action % 9
+        for _ in range(k):
+            # 9 - col == new_row
+            # row == new_col
+            temp = col
+            col = row
+            row = 9 - temp - 1
+        return row * 9 + col
+    
+    def flip_action(self, action):
+        """
+        Flip the action index horizontally.
+        The action is represented as a single index in a 9x9 grid.
+        """
+        row = action // 9
+        col = action % 9
+        
+        new_col = 9 - col - 1
+
+        return row * 9 + new_col
+
+    def get_equivalent_states(self, data):
+        # current_state_record, action, reward, next_state_record, completed
+        equivalent_states = []
+        current_state_record, action, reward, next_state_record, completed = data
+        for i in range(4):
+            # Rotate the current state and next state
+            rotated_current_state = np.rot90(current_state_record, k=i)
+            rotated_next_state = np.rot90(next_state_record, k=i)
+            rotated_action = self.rotate_action90(action, k=i)
+            # Create the equivalent data entry
+            equivalent_data = (rotated_current_state, rotated_action, reward, rotated_next_state, completed)
+            equivalent_states.append(equivalent_data)
+
+            # Also consider flipping the states horizontally
+            flipped_current_state = np.fliplr(rotated_current_state)
+            flipped_next_state = np.fliplr(rotated_next_state)
+            flipped_action = self.flip_action(rotated_action)
+            equivalent_flipped_data = (flipped_current_state, flipped_action, reward, flipped_next_state, completed)
+            equivalent_states.append(equivalent_flipped_data)
+        return equivalent_states
+
     def save_sample(self, data, turn : int):
+        # get equivalent samples and save them in the corresponding memory
+        equivalent_samples = self.get_equivalent_states(data)
         if turn == 0:
-            self.memory1.append(data)
+            self.memory1.extend(equivalent_samples)
         else:
-            self.memory2.append(data)
+            self.memory2.extend(equivalent_samples)
 
     def save_memory(self):
         """
