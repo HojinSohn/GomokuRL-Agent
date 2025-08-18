@@ -1,9 +1,9 @@
 import copy
 import sys
-from env import GomokuEnv
+from game import Game
 from agent import DQNAgent
 from mcts import MCTS
-from model import Model
+from gomokuAgentProject.policy_value_network import Model
 import pygame
 from gui_play import GUI
 import torch
@@ -19,7 +19,7 @@ class Agent(object):
         
         # # load the model
         self.model = Model() 
-        if turn == 0:
+        if turn == -1:
             self.model.load_state_dict(torch.load('models/model1.pth', map_location=torch.device('cpu')))
         else:
             self.model.load_state_dict(torch.load('models/model2.pth', map_location=torch.device('cpu')))
@@ -82,7 +82,7 @@ class Agent(object):
 
 if __name__ == "__main__":
     gui = GUI()
-    env = GomokuEnv()
+    game = Game()
     turn = 0  # Start with player 1
     agent = Agent(-1)  # Agent plays first (black stones)
 
