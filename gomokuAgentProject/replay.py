@@ -1,7 +1,7 @@
 
 
 
-from agent import DQNAgent
+from agent import Agent
 from gui_play import GUI
 from game import Game
 import pygame
@@ -13,18 +13,16 @@ if __name__ == '__main__':
     game = Game()
     turn = 0  # Start with player 1
 
-    dqnAgent = DQNAgent()
-    dqnAgent.load_memory()  # Load the agent's memory if available 
+    agent = Agent()
+    agent.load_memory()  # Load the agent's memory if available
 
-    print(len(dqnAgent.memory1), "samples loaded from memory")
+    print(len(agent.memory), "samples loaded from memory")
 
-    for i, sample in enumerate(dqnAgent.memory1):
-        state, action, reward, next_state, done = sample[0], sample[1], sample[2], sample[3], sample[4]
-        board = np.array(state)
-        next_board = np.array(next_state)
+    for i, sample in enumerate(agent.memory):
+        current_board, act_probs, value_place = sample
+        board = np.array(current_board)
         print(f"Sample state {i}: {board}")
-        print(f"Sample next state {i}: {next_board}")
-        print(f"Action: {action}, Reward: {reward}, Done: {done}")
+        print(f"Action probabilities:\n {act_probs}, Value place: {value_place}")
 
         # Handle pygame events first
         for event in pygame.event.get():
@@ -32,9 +30,6 @@ if __name__ == '__main__':
                 pygame.quit()
                 sys.exit()
         
-        pygame.time.wait(1000)
+        pygame.time.wait(100)
         gui.draw_board(board)  # Draw the board
         
-        # Wait 1 second using clock (non-blocking)
-        pygame.time.wait(100)
-        gui.draw_board(next_board)  # Draw the board

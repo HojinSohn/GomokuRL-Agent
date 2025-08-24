@@ -52,6 +52,36 @@ class GUI:
 
         pygame.display.flip()
 
+    def draw_board_with_probs(self, state, action_probs):
+        self.draw_board(state)  # draw the board + stones first
+
+        font = pygame.font.SysFont(None, 18)  # small font
+        probs_grid = action_probs.reshape(self.BOARD_SIZE, self.BOARD_SIZE)
+
+        for i in range(self.BOARD_SIZE):
+            for j in range(self.BOARD_SIZE):
+                prob = probs_grid[i][j]
+
+                if prob > 0.001:  # skip near-zero values
+                    # pick color based on probability value
+                    if prob > 0.1:
+                        color = (255, 0, 0)       # red (high prob)
+                    elif prob > 0.05:
+                        color = (255, 165, 0)     # orange (medium)
+                    elif prob > 0.03:
+                        color = (0, 128, 0)       # green (low-mid)
+                    else:
+                        color = (0, 0, 255)       # blue (very low)
+
+                    text = font.render(f"{prob:.2f}", True, color)
+                    text_rect = text.get_rect(center=(
+                        self.MARGIN + j * self.CELL_SIZE,
+                        self.MARGIN + i * self.CELL_SIZE
+                    ))
+                    self.screen.blit(text, text_rect)
+
+        pygame.display.flip()
+
     def quit(self):
         pygame.quit()
         sys.exit()

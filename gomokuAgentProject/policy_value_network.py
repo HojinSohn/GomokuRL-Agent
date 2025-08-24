@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import torch.nn as nn
 import torch.optim as optim
@@ -45,6 +46,26 @@ class PolicyValueNetwork():
         self.model = Model().to(self.device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
         self.criterion = nn.MSELoss()
+
+    def update_learning_rate(self, new_learning_rate):
+        """
+        Update the learning rate of the optimizer.
+        """
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = new_learning_rate
+
+    def policy_value(self, boards):
+        """
+        Get action probabilities and state values for a batch of boards.
+        """
+        input_tensors = torch.stack([self.convert_board_to_3channel(board) for board in boards]).to(self.device)
+        with torch.no_grad():
+            action_probs, state_values = self.model(input_tensors)
+
+        action_probs = np.exp(action_probs.cpu().numpy())  # Convert log probabilities to probabilities
+        state_values = state_values.cpu().numpy()
+
+        return action_probs, state_values
 
     def get_action_probs(self, board):
         """
@@ -94,34 +115,45 @@ class PolicyValueNetwork():
         """
         torch.save(self.model.state_dict(), path)
         print(f"Model saved to {path}")
+
+    def load(self, path='models/model.pth'):
+        """
+        Load the model from the specified path.
+        """
+        if os.path.exists(path):
+            self.model.load_state_dict(torch.load(path, map_location=self.device))
+            print(f"Model loaded from {path}")
+        else:
+            print(f"No model found at {path}. Starting with a new model.")
     
     def train_step(self, boards, mcts_act_probs, values):
         """ Given a batch of boards, action probabilities, and values, train the model.
         """
-        
         self.model.train()
         self.optimizer.zero_grad()
 
         # Convert to tensors
         boards_tensor = torch.stack([self.convert_board_to_3channel(board) for board in boards]).to(self.device)
-        act_probs_tensor = torch.tensor(mcts_act_probs, dtype=torch.float32).to(self.device)
-        values_tensor = torch.tensor(values, dtype=torch.float32).to(self.device)
+        act_probs_tensor = torch.from_numpy(np.array(mcts_act_probs, dtype=np.float32)).to(self.device)
+        values_tensor = torch.from_numpy(np.array(values, dtype=np.float32)).to(self.device)
 
         # Forward pass
-        action_probs, state_values = self.model(boards_tensor)
+        action_log_probs, state_values = self.model(boards_tensor)
 
         # Calculate loss
-        act_loss = F.cross_entropy(action_probs, act_probs_tensor)
-        val_loss = self.criterion(state_values.squeeze(), values_tensor)
+        # Cross Entropy Loss for policy (probability distribution)
+        policy_loss = -torch.mean(torch.sum(act_probs_tensor * action_log_probs, 1))
+        # Mean Squared Error Loss for value (state value)
+        value_loss = self.criterion(state_values.squeeze(), values_tensor)
 
         # Define loss function: value loss + policy loss
-        loss = act_loss + val_loss
+        loss = policy_loss + value_loss
 
         # Backward pass and optimization
         loss.backward()
         self.optimizer.step()
 
         # For checking entropy of action probabilities given by the model
-        entropy = -torch.sum(torch.exp(action_probs) * action_probs, dim=1).mean()
+        entropy = -torch.sum(torch.exp(action_log_probs) * action_log_probs, dim=1).mean()
 
-        return loss.item(), entropy.item()
+        return loss.item(), policy_loss.item(), value_loss.item(), entropy.item()

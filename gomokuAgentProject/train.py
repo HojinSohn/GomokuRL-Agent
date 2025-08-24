@@ -1,108 +1,145 @@
 
+import os
 import sys
 from agent import Agent
 from game import Game
 import torch
 import argparse
+import multiprocessing as mp
+import pandas as pd
 
-def run_and_learn(game: Game, agent: Agent, max_episodes: int, starting_episode: int, saving_interval: int):
-    losses = []
-    entropies = []
-    player1_wins = 0
-    player2_wins = 0
+def run_self_play(game: Game, agent: Agent):
+    """Run a self-play game and return the collected samples."""
+    game.reset()
+    game.first_move()
+    total_turns = 1
 
-    for episode in range(max_episodes):
-        if (episode + 1) % saving_interval == 0:
-            agent.save_memory()
-            agent.save_model()
-            print(f"Memory and model saved at episode {episode + 1}")
+    move_count = 1
 
-        if episode + 1 < starting_episode:
-            # log the episode number
-            print(f"Episode {episode + 1}/{max_episodes}")
+    samples = {0: [], 1: []}
 
-        game.reset()
-        game.first_move()
-        total_turns = 1
-        completed = False
+    winner = None
+    while move_count < 80:  # 9x9 board, max 80 turns
+        current_turn = total_turns & 1
 
-        move_count = 0
+        # Get the current board state from the perspective of the current player
+        # Copy the current board state to avoid modifying the original state
+        current_board = game.state[current_turn]
+        current_board = current_board.copy()
 
-        samples = {0: [], 1: []}
+        action, act_probs = agent.get_action_and_probs(game, current_turn)
 
-        winner = None
-        while move_count < 70:  # 9x9 board, max 70 turns
-            # gui.draw_board(game.state[0])
-            current_turn = total_turns & 1  
+        value_place = 0
 
-            current_board = game.state[current_turn]
+        game.update_state(current_turn, action)
 
-            action, act_probs = agent.get_action_and_probs(game, current_turn)
+        winner = game.check_winner(current_turn, action)
 
-            value_place = 0
+        samples[current_turn].append((current_board, act_probs, value_place))
 
-            game.update_state(current_turn, action)
+        move_count += 1
+        total_turns += 1
 
-            winner = game.check_winner(current_turn, action)
+        if winner:
+            break
 
-            if winner:
-                completed = True
-
-            samples[current_turn].append((current_board, act_probs, value_place))
-
-            move_count += 1
-            total_turns += 1
-            
-            if completed:
-                if current_turn == 0:
-                    player1_wins += 1
-                    winner = 0
-                else:
-                    player2_wins += 1
-                    winner = 1
-                break
-        
-        final_samples = []
-        if winner is not None:
-            if winner == 0:
-                for sample in samples[0]:
-                    sample = (sample[0], sample[1], 1)
-                    final_samples.append(sample)
-                for sample in samples[1]:
-                    sample = (sample[0], sample[1], -1)
-                    final_samples.append(sample)
-            else:
-                for sample in samples[0]:
-                    sample = (sample[0], sample[1], -1)
-                    final_samples.append(sample)
-                for sample in samples[1]:
-                    sample = (sample[0], sample[1], 1)
-                    final_samples.append(sample)
-        else:
+    final_samples = []
+    if winner is not None:
+        if winner == 0:
             for sample in samples[0]:
-                sample = (sample[0], sample[1], 0)
+                sample = (sample[0], sample[1], 1)
                 final_samples.append(sample)
             for sample in samples[1]:
-                sample = (sample[0], sample[1], 0)
+                sample = (sample[0], sample[1], -1)
                 final_samples.append(sample)
+        else:
+            for sample in samples[0]:
+                sample = (sample[0], sample[1], -1)
+                final_samples.append(sample)
+            for sample in samples[1]:
+                sample = (sample[0], sample[1], 1)
+                final_samples.append(sample)
+    else:
+        for sample in samples[0]:
+            sample = (sample[0], sample[1], 0)
+            final_samples.append(sample)
 
-        for sample in final_samples:
+    return final_samples
+
+def self_play_worker(game: Game, agent: Agent, episodes, queue, worker_id):
+    """Each worker generates self-play data."""
+    for _ in range(episodes):
+        samples = run_self_play(game, agent)
+        queue.put(samples)  # Send samples to the main process
+    print(f"Worker {worker_id} finished {episodes} episodes")
+
+def run_and_learn_parallel(game, agent, max_episodes, num_workers, start_training_samples=500, saving_interval=1):
+    """Run self-play in parallel using multiple workers and train the agent."""
+    ctx = mp.get_context("spawn") 
+    queue = ctx.Queue()
+
+    # Divide episodes across workers
+    episodes_per_worker = max_episodes // num_workers
+    workers = []
+    for i in range(num_workers):
+        p = ctx.Process(target=self_play_worker, args=(game, agent, episodes_per_worker, queue, i))
+        p.start()
+        workers.append(p)
+
+    # Training loop runs in the main process
+    samples_collected = 0
+    episodes_played = 0
+    losses = []
+    policy_losses = []
+    value_losses = []
+    entropies = []
+    while episodes_played < max_episodes:
+        for sample in queue.get():
             agent.save_sample(sample)
-            if episode >= starting_episode:
-                loss, entropy = agent.train_step()
+            if samples_collected >= start_training_samples:
+                loss, policy_loss, value_loss, entropy = agent.train_step(batch_size=128, num_epochs=5)
                 losses.append(loss)
+                policy_losses.append(policy_loss)
+                value_losses.append(value_loss)
                 entropies.append(entropy)
-                # Print loss and entropy every 500 training steps
-                if len(losses) >= 500:
-                    avg_loss = sum(losses) / 500
-                    avg_entropy = sum(entropies) / 500
-                    print(f"Episode {episode + 1}, Loss: {avg_loss:.4f}, Entropy: {avg_entropy:.4f}")
-                    losses = []
-                    entropies = []
+            else:
+                print(f"Collected sample {samples_collected + 1}, not training yet")
+            if samples_collected > 0 and samples_collected % saving_interval == 0:
+                agent.save_memory()
+                agent.save_model()
+                print(f"Memory and model saved at sample {samples_collected} after {episodes_played + 1} episodes")
+            samples_collected += 1
+        # Calculate average loss and entropy
+        avg_loss = sum(losses) / len(losses) if losses else 0
+        avg_policy_loss = sum(policy_losses) / len(policy_losses) if policy_losses else 0
+        avg_value_loss = sum(value_losses) / len(value_losses) if value_losses else 0
+        avg_entropy = sum(entropies) / len(entropies) if entropies else 0
+        save_loss_entropy(avg_loss, avg_policy_loss, avg_value_loss, avg_entropy, episodes_played)
+        losses = []
+        policy_losses = []
+        value_losses = []
+        entropies = []
+        episodes_played += 1
 
+    # Wait for workers
+    for p in workers:
+        p.join()
+
+    print(f"Training completed. Total samples collected: {samples_collected}")
     agent.save_memory()
     agent.save_model()
-    print(f"Training completed. Player 1 wins: {player1_wins}, Player 2 wins: {player2_wins}")
+
+
+def save_loss_entropy(loss, policy_loss, value_loss, entropy, episode):
+    df = pd.DataFrame({
+        "episode": [episode],
+        "loss": [loss],
+        "policy_loss": [policy_loss],
+        "value_loss": [value_loss],
+        "entropy": [entropy]
+    })
+    write_header = not os.path.exists("loss_entropy.csv")
+    df.to_csv("loss_entropy.csv", mode="a", header=write_header, index=False)
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -113,36 +150,41 @@ if __name__ == "__main__":
 
     parser.add_argument("--load_model", type=lambda x: (str(x).lower() == 'true'), default=False, help="Load existing model or not")
     parser.add_argument("--load_memory", type=lambda x: (str(x).lower() == 'true'), default=False, help="Load memory from file or not")
-    parser.add_argument("--start_training_episode", type=int, default=500, help="Episode to start training")
+    parser.add_argument("--start_training_samples", type=int, default=1, help="Samples to start training")
     parser.add_argument("--mcts_iterations", type=int, default=500, help="Number of MCTS iterations")
     parser.add_argument("--max_episodes", type=int, default=1000, help="Number of episodes to train")
     parser.add_argument("--saving_interval", type=int, default=100, help="Number of episodes to save the model")
+    parser.add_argument("--num_workers", type=int, default=1, help="Number of parallel workers for self-play")
 
 
     args = parser.parse_args()
-    START_TRAINING_EPISODE = args.start_training_episode  # Start training after specified episode
+    START_TRAINING_SAMPLES = args.start_training_samples  # Start training after specified samples
     SAVING_INTERVAL = args.saving_interval  # Save model every 100 episodes
     LOAD_MODEL = args.load_model  # Load existing model or not
     LOAD_MEMORY = args.load_memory  # Load memory from file or not
     MAX_EPISODES = args.max_episodes  # Set a high number of episodes for training
     MCTS_ITERATIONS = args.mcts_iterations  # Number of MCTS iterations
+    NUM_WORKERS = args.num_workers  # Number of parallel workers for self-play
 
     # Setting up the environment and agent
     game = Game()
     # device=torch.device("cpu"), learning_rate=0.001, load_model=False, load_memory=False, mcts_iterations=10000
-    agent = Agent(device=device, learning_rate=0.001, load_model=LOAD_MODEL, load_memory=LOAD_MEMORY, mcts_iterations=MCTS_ITERATIONS)
+    agent = Agent(device=device, learning_rate=0.002, mcts_iterations=MCTS_ITERATIONS)
 
     if LOAD_MODEL:
-        agent.policy_value_network.load_model()
+        agent.load_model()
     if LOAD_MEMORY:
         agent.load_memory()
 
-    print(f"Starting training from episode {START_TRAINING_EPISODE} with max episodes {MAX_EPISODES} and saving interval {SAVING_INTERVAL}")
-    run_and_learn(game, agent, MAX_EPISODES, START_TRAINING_EPISODE, SAVING_INTERVAL)
+    
+
+    #game, agent, max_episodes, num_workers=4, start_training_samples=500, saving_interval=1
+    print(f"Starting training from {START_TRAINING_SAMPLES} with max episodes {MAX_EPISODES} and saving interval {SAVING_INTERVAL}")
+    run_and_learn_parallel(game, agent, MAX_EPISODES, NUM_WORKERS, START_TRAINING_SAMPLES, SAVING_INTERVAL)
 
 
 """
 
-python train.py --load_model False --load_memory False --start_training_episode 50 --mcts_iterations 800 --max_episodes 1000 --saving_interval 200
+python train.py --load_model False --load_memory False --start_training_samples 50 --mcts_iterations 800 --max_episodes 1000 --saving_interval 200
 
 """
