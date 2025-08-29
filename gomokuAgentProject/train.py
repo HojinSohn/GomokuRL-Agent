@@ -19,7 +19,13 @@ def run_self_play(game: Game, agent: Agent):
     samples = {0: [], 1: []}
 
     winner = None
-    while move_count < 80:  # 9x9 board, max 80 turns
+    while move_count < 81:  # 9x9 board, max 80 turns
+        # winner = game.check_winner(current_turn, action)
+        winner = game.get_winner()
+        if winner is not None:
+            # fuck this 
+            break
+
         current_turn = total_turns & 1
 
         # Get the current board state from the perspective of the current player
@@ -31,17 +37,14 @@ def run_self_play(game: Game, agent: Agent):
 
         value_place = 0
 
-        game.update_state(current_turn, action)
-
-        winner = game.check_winner(current_turn, action)
+        # game.update_state(current_turn, action)
+        move = divmod(action, 9)
+        game.do_move(move)
 
         samples[current_turn].append((current_board, act_probs, value_place))
 
         move_count += 1
         total_turns += 1
-
-        if winner:
-            break
 
     final_samples = []
     if winner is not None:
@@ -52,15 +55,26 @@ def run_self_play(game: Game, agent: Agent):
             for sample in samples[1]:
                 sample = (sample[0], sample[1], -1)
                 final_samples.append(sample)
-        else:
+        elif winner == 1:
             for sample in samples[0]:
                 sample = (sample[0], sample[1], -1)
                 final_samples.append(sample)
             for sample in samples[1]:
                 sample = (sample[0], sample[1], 1)
                 final_samples.append(sample)
+        else:
+            # draw
+            for sample in samples[0]:
+                sample = (sample[0], sample[1], 0)
+                final_samples.append(sample)
+            for sample in samples[1]:
+                sample = (sample[0], sample[1], 0)
+                final_samples.append(sample)
     else:
         for sample in samples[0]:
+            sample = (sample[0], sample[1], 0)
+            final_samples.append(sample)
+        for sample in samples[1]:
             sample = (sample[0], sample[1], 0)
             final_samples.append(sample)
 

@@ -23,7 +23,7 @@ class Node:
         self.is_terminal = False
         self.probability = probability
 
-        self.punc_val = 5
+        self.punc_val = 1.5 # Exploration value
 
     def update(self, value_from_rollout):
         """ Update the node with the value from the rollout. Negative value indicates a loss for the current player.
@@ -34,7 +34,7 @@ class Node:
     def get_value(self):
         """ Calculate the value of the node based on Q-value and UCB1 formula.
         """
-        return self.Q_value + self.punc_val * self.probability * np.sqrt(self.parent.visits) / (1 + self.visits)
+        return -self.Q_value + self.punc_val * self.probability * np.sqrt(self.parent.visits) / (1 + self.visits)
 
 BOARD_SIZE = 9
 class MCTS:
@@ -42,58 +42,11 @@ class MCTS:
         self.policy_value_network = policy_value_network
         self.iterations = iterations
 
-    def apply_moves_to_board(self, board, moves, first_move_stone):
-        """Apply a sequence of moves to a board, alternating players"""
-        board = board.copy()  # Create a copy to avoid modifying the original
-        for i, move in enumerate(moves):
-            if move is not None:
-                row, col = move
-                # Alternate players: first_move_stone, then -first_move_stone, etc.
-                player = first_move_stone if i % 2 == 0 else -first_move_stone
-                board[row][col] = player
-        return board
-
-    def undo_moves_from_board(self, board, moves, initial_stone):
-        """Undo a sequence of moves from a board, alternating players"""
-        board = board.copy()  # Create a copy to avoid modifying the original
-        for move in moves:
-            if move is not None:
-                row, col = move
-                board[row][col] = 0
-        return board
-    
-    def traverse_down_to_leaf_node(self, node):
-        """ This function traverses the tree from the element node to a leaf node,
-            selecting child nodes based on the UCB1 score.
-        """
-        while node.children:
-            node = max(node.children, key=lambda n: n.get_value())
-        return node
-    
-    def expand(self, node: Node, game: Game):
-        '''
-            This function expands a leaf node by adding child nodes for legal or promising next moves.
-            It will be called when a leaf node is reached second time during the traversal.
-
-            @param node: Leaf node (board state) to expand
-            @param board: Current board state (2D array) 9x9. 0 = empty, 1 = player, -1 = opponent
-            @return: New child node added to the tree, or None if no promising moves are available
-        '''
-        # need to get the board state from the current turn's perspective
-        # get the root's board state from the current turn's perspective
-        root_board = game.state[node.current_turn]
-        # first move turn is the root's current turn
-        # but since the board state is from the current turn's perspective, we need to adjust
-        if self.root.current_turn == node.current_turn:
-            # in this case, first move is 1
-            first_move_stone = 1
-        else:
-            # in this case, first move is -1
-            first_move_stone = -1
-        current_board = self.apply_moves_to_board(root_board, node.moves, first_move_stone)
-
-        # action probabilities from the current state
-        act_probs = self.policy_value_network.get_action_probs(current_board)
+    def expand_node(self, node: Node, game: Game):
+        # Get action probabilities from the model for the current board state
+        board = game.state[node.current_turn]
+        act_probs = self.policy_value_network.get_action_probs(board)
+        # print(f"[EXPAND_NODE] Expanding {node.move}, turn={node.current_turn}, got {len(act_probs)} moves")
         if not act_probs:
             print("Expand: No action is available")
             return None
@@ -102,6 +55,7 @@ class MCTS:
             if action in node.children_moves:
                 continue
             row, col = divmod(action, BOARD_SIZE)
+            # print(f"   -> Creating child at {(row,col)} with prob={prob:.3f}")
             # Create a new child node for this action
             child_node = Node(next_turn, prob, parent=node, move=(row, col))
             # Add the child node to the current node's children
@@ -109,81 +63,59 @@ class MCTS:
             node.children_moves.add(action)
             child_node.parent = node
 
-    def check_end(self, node: Node, game: Game):
+    def search(self, node: Node, game: Game):
         """
-        Checks if the player who just moved has won by detecting five consecutive stones
-        including the most recent move.
+        A recursive function to traverse, expand, and backpropagate.
+        Returns the value of the state from the current player's perspective.
         """
-        board = game.state[node.current_turn]
-        board = self.apply_moves_to_board(board, node.moves, 1)
-        r, c = node.move
-        if not (0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE and board[r, c] == 1):
-            return None
+        # 1. BASE CASE: Check for a terminal state
+        winner = game.get_winner()
+        if winner is not None:
+            leaf_value = 1 if winner == node.current_turn else -1
+            # print(f"[WINNER] Node {node.move}, turn={node.current_turn}, winner={winner}, visits={node.visits}, leaf_value={leaf_value}")
+            node.update(leaf_value)
+            return -leaf_value
 
-        # Directions: horizontal, vertical, main diagonal, anti-diagonal
-        directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
+        # 2. EXPANSION
+        if not node.children:
+            if node.visits == 0:
+                # print(f"[EVAL] First visit at node {node.move}, turn={node.current_turn}")
+                # First visit: just evaluate
+                board = game.state[node.current_turn]
+                value = self.policy_value_network.get_state_value(board)
+                node.update(value)
+                return -value # Return the negated value for the parent
+            else:
+                # print(f"[EXPAND] Expanding node {node.move}, visits={node.visits}")
+                # Second visit: expand the node
+                self.expand_node(node, game)
+                # print(f"   -> Children count after expand: {len(node.children)}")
+                if not node.children:
+                    return 0
+                # Select the best child for first simulation
+                child = max(node.children, key=lambda n: n.get_value())
+                # print(f"   -> Selected child {child.move}, visits={child.visits}, val={child.get_value():.3f}")
+                game.do_move(child.move)
+                value = self.search(child, game)
+                # if abs(value) == 1:
+                #     print(f"[TERMINAL] Node {child.move}, turn={child.current_turn}, value={value}")
+                game.undo_move()
+                node.update(value)
+                return -value
 
-        for dr, dc in directions:
-            # Count consecutive stones in both directions (e.g., left and right for horizontal)
-            count = 1  # Include the current move
-            # Forward direction
-            for i in range(1, 5):  # Check up to 4 cells forward
-                nr, nc = r + dr * i, c + dc * i
-                if not (0 <= nr < BOARD_SIZE and 0 <= nc < BOARD_SIZE and board[nr, nc] == 1):
-                    break
-                count += 1
-            # Backward direction
-            for i in range(1, 5):  # Check up to 4 cells backward
-                nr, nc = r - dr * i, c - dc * i
-                if not (0 <= nr < BOARD_SIZE and 0 <= nc < BOARD_SIZE and board[nr, nc] == 1):
-                    break
-                count += 1
-            # Check if we have 5 or more consecutive stones
-            if count >= 5:
-                return node.current_turn  # Return the winning player (0 or 1)
+        # 3. SELECTION: If not a leaf, select the best child and recurse
+        best_child = max(node.children, key=lambda n: n.get_value())
+        # print(f"[SELECT] Node {node.move} at turn {node.current_turn}, choosing child {best_child.move}, visits={best_child.visits}, val={best_child.get_value():.3f}, Q_val={best_child.Q_value:.3f}, prob={best_child.probability:.3f}")
+        # 4. RECURSIVE CALL & UNDO
+        game.do_move(best_child.move)           # Apply move
+        value = self.search(best_child, game)   # Recurse
+        game.undo_move()                        # Undo move
 
-        return None
-
-    def rollout(self, node: Node, game: Game):
-        """ Perform a rollout from the given node to a terminal state. It won't use random simulation, 
-            but will use the value network to get the value of the state.
-        """
-        # need to get the board state from the current turn's perspective
-        # get the root's board state from the current turn's perspective
-        root_board = game.state[node.current_turn]
-        # first move turn is the root's current turn
-        # but since the board state is from the current turn's perspective, we need to adjust
-        if self.root.current_turn == node.current_turn:
-            # in this case, first move is 1
-            first_move_stone = 1
-        else:
-            # in this case, first move is -1
-            first_move_stone = -1
-        current_board = self.apply_moves_to_board(root_board, node.moves, first_move_stone)
-
-        # Get the value from the policy value network by passing the current board state from the current turn's perspective
-        value = self.policy_value_network.get_state_value(current_board)
-
-        # if value < 0:
-        #     # If the value is negative, current player lost
-        #     value = -1
-        # elif value > 0:
-        #     # If the value is positive, current player won
-        #     value = 1
-        # else:
-        #     # If the value is zero, draw
-        #     value = 0
-
-        # This value is the result for the current turn
-        return value
-
-    def backpropagate(self, node, result):
-        """ Backpropagate the result up the tree to update the nodes.
-        """
-        while node is not None:
-            node.update(result)
-            result = -result  # Flip the result for the parent node
-            node = node.parent
+        # 5. BACKPROPAGATION: Update the node's stats
+        node.update(value)
+        # if abs(value) == 1:
+        #     print(f"[TERMINAL] Node {best_child.move}, turn={node.current_turn}, value={value}, visits={node.visits}")
+        return -value # Return the negated value for the parent
 
     def get_action_probs(self, game: Game, turn: int):
         """
@@ -195,46 +127,221 @@ class MCTS:
 
         Game should have not been ended yet.
         """
-        self.root = Node(turn, 1.0, parent=None, move=None) 
-        for it in range(self.iterations):
-            # traverse down the tree to a leaf node
-            leaf_node = self.traverse_down_to_leaf_node(self.root)
-            winner = self.check_end(leaf_node, game) if leaf_node != self.root else None
-            if winner is not None:
-                if winner == leaf_node.current_turn:
-                    leaf_node_result = 1
-                else:
-                    leaf_node_result = -1
-            else:
-                # Expand leaf node
-                self.expand(leaf_node, game)
-                if not leaf_node.children:
-                    # If no children were added, it means no legal moves are available
-                    winner = self.check_end(leaf_node, game) if leaf_node != self.root else None
-                    if winner is not None:
-                        if winner == leaf_node.current_turn:
-                            leaf_node_result = 1
-                        else:
-                            leaf_node_result = -1
-                    else:
-                        # If no winner can be determined, it's a draw
-                        leaf_node_result = 0
-                else:
-                    leaf_node_result = self.rollout(leaf_node, game)
-            self.backpropagate(leaf_node, leaf_node_result)
+        # print(f"[INFO] Starting MCTS for turn {turn}")
+        self.root = Node(turn, 1.0, parent=None, move=None)
+
+        if game.get_winner() is not None:
+            print("Game has already ended. No moves possible.")
+            print("This should not happen: Game over detected.")
+            print(f"Move history: {game.move_history}")
+            print(f"Board state:\n{game.state[turn]}")
+
+        for _ in range(self.iterations):
+            self.search(self.root, game)
 
         # Calculate action probabilities based on visits
         action_probs = np.zeros(BOARD_SIZE * BOARD_SIZE)
-        if not self.root.children:
-            print(f"Root has no children.")
-            print("Board state:")
-            print(game.state[self.root.current_turn])
+        total_child_visits = sum(child.visits for child in self.root.children)
+
+        if total_child_visits == 0:
+            print('This should not happen: No visits recorded for any child nodes')
+            print('Parent node visits:', self.root.visits)
+            print('Board:', game.state[turn])
+            print('len of root.children:', len(self.root.children))
+            for child in self.root.children:
+                print(f'Child move: {child.move}, visits: {child.visits}, its children length: {len(child.children)}')
+            return action_probs
+
         for child in self.root.children:
             if child.visits > 0:
                 action = child.move[0] * BOARD_SIZE + child.move[1]
-                action_probs[action] = child.visits / (self.root.visits - 1)
+                action_probs[action] = child.visits / total_child_visits
         
         return action_probs
+    
+
+    # def apply_moves_to_board(self, board, moves, first_move_stone):
+    #     """Apply a sequence of moves to a board, alternating players"""
+    #     board = board.copy()  # Create a copy to avoid modifying the original
+    #     for i, move in enumerate(moves):
+    #         if move is not None:
+    #             row, col = move
+    #             # Alternate players: first_move_stone, then -first_move_stone, etc.
+    #             player = first_move_stone if i % 2 == 0 else -first_move_stone
+    #             board[row][col] = player
+    #     return board
+
+    # def undo_moves_from_board(self, board, moves, initial_stone):
+    #     """Undo a sequence of moves from a board, alternating players"""
+    #     board = board.copy()  # Create a copy to avoid modifying the original
+    #     for move in moves:
+    #         if move is not None:
+    #             row, col = move
+    #             board[row][col] = 0
+    #     return board
+    
+    # def traverse_down_to_leaf_node(self, node):
+    #     """ This function traverses the tree from the element node to a leaf node,
+    #         selecting child nodes based on the UCB1 score.
+    #     """
+    #     while node.children:
+    #         node = max(node.children, key=lambda n: n.get_value())
+    #     return node
+    
+    # def expand(self, node: Node, game: Game):
+    #     '''
+    #         This function expands a leaf node by adding child nodes for legal or promising next moves.
+    #         It will be called when a leaf node is reached second time during the traversal.
+
+    #         @param node: Leaf node (board state) to expand
+    #         @param board: Current board state (2D array) 9x9. 0 = empty, 1 = player, -1 = opponent
+    #         @return: New child node added to the tree, or None if no promising moves are available
+    #     '''
+    #     # need to get the board state from the current turn's perspective
+    #     # get the root's board state from the current turn's perspective
+    #     root_board = game.state[node.current_turn]
+    #     # first move turn is the root's current turn
+    #     # but since the board state is from the current turn's perspective, we need to adjust
+    #     if self.root.current_turn == node.current_turn:
+    #         # in this case, first move is 1
+    #         first_move_stone = 1
+    #     else:
+    #         # in this case, first move is -1
+    #         first_move_stone = -1
+    #     current_board = self.apply_moves_to_board(root_board, node.moves, first_move_stone)
+
+    #     # action probabilities from the current state
+    #     act_probs = self.policy_value_network.get_action_probs(current_board)
+    #     if not act_probs:
+    #         print("Expand: No action is available")
+    #         return None
+    #     next_turn = 1 - node.current_turn
+    #     for action, prob in act_probs:
+    #         if action in node.children_moves:
+    #             continue
+    #         row, col = divmod(action, BOARD_SIZE)
+    #         # Create a new child node for this action
+    #         child_node = Node(next_turn, prob, parent=node, move=(row, col))
+    #         # Add the child node to the current node's children
+    #         node.children.append(child_node)
+    #         node.children_moves.add(action)
+    #         child_node.parent = node
+
+    # def check_end(self, node: Node, game: Game):
+    #     """
+    #     Checks if the player who just moved has won by detecting five consecutive stones
+    #     including the most recent move.
+    #     """
+    #     board = game.state[node.current_turn]
+    #     board = self.apply_moves_to_board(board, node.moves, 1)
+    #     r, c = node.move
+    #     if not (0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE and board[r, c] == 1):
+    #         return None
+
+    #     # Directions: horizontal, vertical, main diagonal, anti-diagonal
+    #     directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
+
+    #     for dr, dc in directions:
+    #         # Count consecutive stones in both directions (e.g., left and right for horizontal)
+    #         count = 1  # Include the current move
+    #         # Forward direction
+    #         for i in range(1, 5):  # Check up to 4 cells forward
+    #             nr, nc = r + dr * i, c + dc * i
+    #             if not (0 <= nr < BOARD_SIZE and 0 <= nc < BOARD_SIZE and board[nr, nc] == 1):
+    #                 break
+    #             count += 1
+    #         # Backward direction
+    #         for i in range(1, 5):  # Check up to 4 cells backward
+    #             nr, nc = r - dr * i, c - dc * i
+    #             if not (0 <= nr < BOARD_SIZE and 0 <= nc < BOARD_SIZE and board[nr, nc] == 1):
+    #                 break
+    #             count += 1
+    #         # Check if we have 5 or more consecutive stones
+    #         if count >= 5:
+    #             return node.current_turn  # Return the winning player (0 or 1)
+
+    #     return None
+
+    # def rollout(self, node: Node, game: Game):
+    #     """ Perform a rollout from the given node to a terminal state. It won't use random simulation, 
+    #         but will use the value network to get the value of the state.
+    #     """
+    #     # need to get the board state from the current turn's perspective
+    #     # get the root's board state from the current turn's perspective
+    #     root_board = game.state[node.current_turn]
+    #     # first move turn is the root's current turn
+    #     # but since the board state is from the current turn's perspective, we need to adjust
+    #     if self.root.current_turn == node.current_turn:
+    #         # in this case, first move is 1
+    #         first_move_stone = 1
+    #     else:
+    #         # in this case, first move is -1
+    #         first_move_stone = -1
+    #     current_board = self.apply_moves_to_board(root_board, node.moves, first_move_stone)
+
+    #     # Get the value from the policy value network by passing the current board state from the current turn's perspective
+    #     value = self.policy_value_network.get_state_value(current_board)
+
+    #     # if value < 0:
+    #     #     # If the value is negative, current player lost
+    #     #     value = -1
+    #     # elif value > 0:
+    #     #     # If the value is positive, current player won
+    #     #     value = 1
+    #     # else:
+    #     #     # If the value is zero, draw
+    #     #     value = 0
+
+    #     # This value is the result for the current turn
+    #     return value
+
+    # def backpropagate(self, node, result):
+    #     """ Backpropagate the result up the tree to update the nodes.
+    #     """
+    #     while node is not None:
+    #         node.update(result)
+    #         result = -result  # Flip the result for the parent node
+    #         node = node.parent
+
+        # for it in range(self.iterations):
+        #     # traverse down the tree to a leaf node
+        #     leaf_node = self.traverse_down_to_leaf_node(self.root)
+        #     winner = self.check_end(leaf_node, game) if leaf_node != self.root else None
+        #     if winner is not None:
+        #         if winner == leaf_node.current_turn:
+        #             leaf_node_result = 1
+        #         else:
+        #             leaf_node_result = -1
+        #     else:
+        #         # Expand leaf node
+        #         self.expand(leaf_node, game)
+        #         if not leaf_node.children:
+        #             # If no children were added, it means no legal moves are available
+        #             winner = self.check_end(leaf_node, game) if leaf_node != self.root else None
+        #             if winner is not None:
+        #                 if winner == leaf_node.current_turn:
+        #                     leaf_node_result = 1
+        #                 else:
+        #                     leaf_node_result = -1
+        #             else:
+        #                 # If no winner can be determined, it's a draw
+        #                 leaf_node_result = 0
+        #         else:
+        #             leaf_node_result = self.rollout(leaf_node, game)
+        #     self.backpropagate(leaf_node, leaf_node_result)
+
+        # # Calculate action probabilities based on visits
+        # action_probs = np.zeros(BOARD_SIZE * BOARD_SIZE)
+        # if not self.root.children:
+        #     print(f"Root has no children.")
+        #     print("Board state:")
+        #     print(game.state[self.root.current_turn])
+        # for child in self.root.children:
+        #     if child.visits > 0:
+        #         action = child.move[0] * BOARD_SIZE + child.move[1]
+        #         action_probs[action] = child.visits / (self.root.visits - 1)
+        
+        # return action_probs
 
     # def get_reasonable_moves(self, board, current_turn, last_move=None):
     #     # return any empty cells in the center 5x5 area

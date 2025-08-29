@@ -37,6 +37,9 @@ class Agent():
         # Get the action probabilities from MCTS
         mcts_action_probs = self.mcts.get_action_probs(game, turn)
 
+        # normalize in case for imprecision
+        mcts_action_probs = mcts_action_probs / np.sum(mcts_action_probs)
+
         # Sample an action based on the probabilities
         action = np.random.choice(len(mcts_action_probs), p=mcts_action_probs)
         
