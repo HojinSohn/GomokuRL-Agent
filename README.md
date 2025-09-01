@@ -10,10 +10,11 @@ The agent improves entirely through **self-play**, without human data, by combin
 
 ## Training Pipeline
 
-(Image of training pipeline)
-self-play (MCTS) -> save sample (board_state, policy_distribution_mcts, reward_value) in memory -> train the model with samples from memory = better Policy Value Neural Network --> redo
+![training pipeline](./pipeline-img.png)
 
 ## How Neural Network is Used  
+
+![Neural Network Example](./nn-example.png)
 
 The neural network plays two key roles in the learning pipeline:  
 
@@ -26,7 +27,7 @@ The neural network plays two key roles in the learning pipeline:
    - These outputs guide the **Monte Carlo Tree Search (MCTS)**, focusing the search on the most promising moves and improving decision-making during self-play.
 
 3. **Learning from Experience (during training)**  
-   - After a batch of self-play games finishes, the collected samples `(state, policy_target, value_target)` are used to train the network.  
+   - After a batch of self-play games finishes, the collected samples `(state, policy_distribution_mcts, value_target)` are used to train the network.  
    - The network is optimized with three objectives:  
      - **Policy Loss** → make the predicted policy match the MCTS move distribution.  
      - **Value Loss** → make the predicted value match the actual game result.  
