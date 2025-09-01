@@ -13,7 +13,10 @@ import random
 from gui_play import GUI
 
 class Agent():
-    def __init__(self, device=torch.device("cpu"), learning_rate=0.002, mcts_iterations=10000):
+    """
+    Agent class for managing the game-playing agent.
+    """
+    def __init__(self, device=torch.device("cpu"), learning_rate=0.002, mcts_iterations=4000):
         self.device = device
 
         self.policy_value_network = PolicyValueNetwork(device=device, learning_rate=learning_rate)
@@ -22,7 +25,7 @@ class Agent():
 
         self.memory = deque(maxlen=10000)  # Memory to store samples
 
-        self.kl_targ = 0.02
+        self.kl_targ = 0.05
 
         self.learning_rate = learning_rate
 
@@ -46,6 +49,9 @@ class Agent():
         return action, mcts_action_probs
 
     def save_sample(self, data):
+        """
+        Save a sample to memory.
+        """
         # current_board, action, value_place
         current_board, act_probs, value_place = data
         equivalent_states = self.get_equivalent_states(current_board, act_probs)
@@ -109,7 +115,8 @@ class Agent():
         return equivalent_states
 
     def train_step(self, batch_size=64, num_epochs=5):
-        """ Get a random batch of samples from memory and train the model.
+        """ 
+        Get a random batch of samples from memory and train the model.
         """
         if len(self.memory) < batch_size:
             print("Not enough samples in memory to train.")

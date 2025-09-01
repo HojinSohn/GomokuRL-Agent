@@ -10,11 +10,13 @@ import torch
 import numpy as np
 
 if __name__ == "__main__":
+    """
+    Main entry point for the game play. Test the agent's performance in a GUI environment.
+    """
     gui = GUI()
     game = Game()
     turn = 0  # Start with player 1
-    agent = Agent(load_model=True) 
-
+    agent = Agent() 
     agent.load_model()
     
     done = False
@@ -32,13 +34,14 @@ if __name__ == "__main__":
             _, action_probs = agent.get_action_and_probs(game, 0)
             # pick the most probable action
             action = np.argmax(action_probs)
-            game.update_state(0, action)
+            # game.update_state(0, action)
             row, col = divmod(action, 9)
+            game.do_move((row, col))
             action_probs = action_probs.reshape(9, 9)
             print(action_probs)
             print(f"Agent 1 placed stone at ({row}, {col}) with probability {action_probs[row, col]}")
             gui.draw_board_with_probs(game.state[0], action_probs)
-            win = game.check_winner(0, action)
+            win = game.get_winner()
             if win:
                 print("Agent 1 wins!")
                 done = True
@@ -61,10 +64,10 @@ if __name__ == "__main__":
                             col = (x - gui.MARGIN) // gui.CELL_SIZE
                             action = row * 9 + col
                             print(f"Player clicked on cell ({row}, {col})")
-                            game.update_state(1, action)
+                            game.do_move((row, col))
                             move_made = True  # <== Exit the wait loop
                             gui.draw_board(game.state[0])
-                            win = game.check_winner(1, action)
+                            win = game.get_winner()
                             if win:
                                 print("Player wins!")
                                 done = True

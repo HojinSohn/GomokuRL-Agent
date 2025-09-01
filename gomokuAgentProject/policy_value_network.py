@@ -13,10 +13,10 @@ class Model(nn.Module):
         self.conv2 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
 
-        # action policy layers
+        # action policy head
         self.act_conv1 = nn.Conv2d(128, 4, kernel_size=1)
         self.act_fc1 = nn.Linear(4*9*9, 9*9)
-        # state value layers
+        # state value head
         self.val_conv1 = nn.Conv2d(128, 2, kernel_size=1)
         self.val_fc1 = nn.Linear(2*9*9, 64)
         self.val_fc2 = nn.Linear(64, 1)
@@ -48,7 +48,7 @@ class PolicyValueNetwork():
         self.criterion = nn.MSELoss()
 
     def update_learning_rate(self, new_learning_rate):
-        """
+        """        
         Update the learning rate of the optimizer.
         """
         for param_group in self.optimizer.param_groups:

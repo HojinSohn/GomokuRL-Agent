@@ -10,12 +10,14 @@ import pandas as pd
 
 def run_self_play(game: Game, agent: Agent):
     """Run a self-play game and return the collected samples."""
+    # Reset the game state and make the first move
     game.reset()
     game.first_move()
     total_turns = 1
 
     move_count = 1
 
+    # Collect samples for both players
     samples = {0: [], 1: []}
 
     winner = None
@@ -47,6 +49,7 @@ def run_self_play(game: Game, agent: Agent):
         total_turns += 1
 
     final_samples = []
+    # based on the winner, assign values (1 for win, -1 for loss, 0 for draw) to each sample
     if winner is not None:
         if winner == 0:
             for sample in samples[0]:
@@ -110,8 +113,9 @@ def run_and_learn_parallel(game, agent, max_episodes, num_workers, start_trainin
     while episodes_played < max_episodes:
         for sample in queue.get():
             agent.save_sample(sample)
+            # train the agent when enough samples are collected
             if samples_collected >= start_training_samples:
-                loss, policy_loss, value_loss, entropy = agent.train_step(batch_size=128, num_epochs=5)
+                loss, policy_loss, value_loss, entropy = agent.train_step(batch_size=512, num_epochs=5)
                 losses.append(loss)
                 policy_losses.append(policy_loss)
                 value_losses.append(value_loss)
@@ -146,7 +150,6 @@ def run_and_learn_parallel(game, agent, max_episodes, num_workers, start_trainin
 
 def save_loss_entropy(loss, policy_loss, value_loss, entropy, episode):
     df = pd.DataFrame({
-        "episode": [episode],
         "loss": [loss],
         "policy_loss": [policy_loss],
         "value_loss": [value_loss],
@@ -157,7 +160,6 @@ def save_loss_entropy(loss, policy_loss, value_loss, entropy, episode):
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # get arg to check whether to use GUI or not
     print(f"Using device: {device}")
 
     parser = argparse.ArgumentParser(description="Gomoku Training Script")
@@ -182,8 +184,7 @@ if __name__ == "__main__":
 
     # Setting up the environment and agent
     game = Game()
-    # device=torch.device("cpu"), learning_rate=0.001, load_model=False, load_memory=False, mcts_iterations=10000
-    agent = Agent(device=device, learning_rate=0.002, mcts_iterations=MCTS_ITERATIONS)
+    agent = Agent(device=device, learning_rate=0.003, mcts_iterations=MCTS_ITERATIONS)
 
     if LOAD_MODEL:
         agent.load_model()

@@ -6,6 +6,9 @@ import sys
 import numpy as np
 
 if __name__ == '__main__':
+    '''
+    Replay a game from the agent's memory. Debugging tool to visualize the agent's decision-making process.
+    '''
     gui = GUI()
     game = Game()
 
