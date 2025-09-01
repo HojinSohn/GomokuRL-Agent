@@ -10,11 +10,11 @@ The agent improves entirely through **self-play**, without human data, by combin
 
 ## Training Pipeline
 
-![training pipeline](./pipeline-img.png)
+![training pipeline](./images/pipeline-img.png)
 
 ## How Neural Network is Used  
 
-![Neural Network Example](./nn-example.png)
+![Neural Network Example](./images/nn-example.png)
 
 The neural network plays two key roles in the learning pipeline:  
 

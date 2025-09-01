@@ -4,3 +4,8 @@ __pycache__/
 myenv/
 .DS_Store
 *.vscode
+memories/
+memories_old/
+*.csv
+*.txt
+*.log

@@ -5,7 +5,7 @@ import sys
 BOARD_SIZE = 9
 CELL_SIZE = 40
 MARGIN = 20
-WINDOW_SIZE = BOARD_SIZE * CELL_SIZE + MARGIN * 2
+WINDOW_SIZE = (BOARD_SIZE - 1) * CELL_SIZE + MARGIN * 2
 
 # Colors
 BLACK = (0, 0, 0)
@@ -27,7 +27,7 @@ class GUI:
         self.screen.fill(WOOD)
         
         # Draw grid lines
-        for i in range(BOARD_SIZE + 1):
+        for i in range(BOARD_SIZE):
             # Horizontal lines
             pygame.draw.line(self.screen, BLACK,
                             (MARGIN, MARGIN + i * CELL_SIZE),
