@@ -4,7 +4,7 @@ An AI agent that learns to play **Gomoku** (Five in a Row) using self-play reinf
 ## Overview  
 This project was started as a **learning experience** to explore reinforcement learning and self-play methods inspired by DeepMind’s AlphaZero.  
 The agent improves entirely through **self-play**, without human data, by combining:  
-- **Deep Neural Networks** for policy (move probabilities) and value (win chance).  
+- **Deep Neural Networks (PyTorch)** for policy (move probabilities) and value (win chance).  
 - **Monte Carlo Tree Search (MCTS)** for lookahead search during gameplay.  
 - **Reinforcement Learning** from self-play games to iteratively refine the model.  
 
@@ -33,7 +33,7 @@ The neural network plays two key roles in the learning pipeline:
      - **Value Loss** → make the predicted value match the actual game result.  
      - **Regularization Term** → prevent overfitting and stabilize learning.  
 
-This creates a feedback loop:  
+This creates a feedback loop 🔄:  
 - **Better networks** guide **better self-play**.  
 - **Better self-play** produces **better training data**.  
 - Over time, the agent improves without any human examples.  
