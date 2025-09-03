@@ -38,6 +38,7 @@ This creates a feedback loop 🔄:
 - **Better self-play** produces **better training data**.  
 - Over time, the agent improves without any human examples.  
 
+[Watch the demo](./images/agent-vs-heuristicMCTS.gif)
 
 Due to limited computational resources (no dedicated GPU), I eventually stopped large-scale training.  
 However, even in the early stages of training, I could observe the model **gradually improving its gameplay** through self-play training.  
