@@ -44,7 +44,7 @@ This creates a feedback loop 🔄:
 - **White**: MCTS with heuristic-based move selection  
 - Both agents ran **4,000 iterations per move**  
 
-![Demo](./images/agent-vs-heuristicMCTS.gif)
+![Demo](./images/agent-vs-heuristicMCTS1.gif)
 
 Even without explicit open-three detection, **Black** is able to recognize both offensive and defensive opportunities. In this game, Black won by making a strategic **4-3 move**, creating an open four and an open three simultaneously.
 
