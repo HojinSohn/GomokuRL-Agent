@@ -7,5 +7,4 @@ myenv/
 memories/
 memories_old/
 *.csv
-*.txt
 *.log

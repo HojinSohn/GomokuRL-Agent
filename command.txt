@@ -7,3 +7,5 @@ python main.py --mode both --max_episodes 10000 --start_training_episode 500 --i
 python train.py --mode training --num_training 5000 --updating_interval 150 --load_memory true
 
 python main.py --mode data_collection --max_episodes 5000 --init_epsilon 1.0
+
+caffeinate -i python train.py --load_model True --load_memory True --start_training_samples -1 --mcts_iterations 7000 --max_episodes 10000 --saving_interval 150 --num_workers 2

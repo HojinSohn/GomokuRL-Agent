@@ -23,7 +23,7 @@ def run_self_play(game: Game, agent: Agent):
     winner = None
     while move_count < 81:  # 9x9 board, max 80 turns
         # winner = game.check_winner(current_turn, action)
-        winner = game.get_winner()
+        winner, _ = game.get_winner_indirect()
         if winner is not None:
             # fuck this 
             break

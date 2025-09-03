@@ -130,7 +130,7 @@ class Game:
         Used to check for potential winning moves.
         """
         if prev_move is None:
-            return False, None
+            return False, []
 
         board = self.state[turn]
         r, c = divmod(prev_move, self.size)
@@ -141,6 +141,9 @@ class Game:
                       (1, 0),  # Vertical
                       (1, 1),  # Main diagonal
                       (1, -1)] # Anti-diagonal
+        
+        res = False
+        empty_cell_positions = []
 
         for dr, dc in directions:
             # For each direction, check the 5 possible 5-cell windows that include the new stone.
@@ -166,23 +169,26 @@ class Game:
                 if player_stones_count == 4 and empty_cells_count == 1:
                     # get the empty cell position
                     empty_cell_pos = window_coords[window_values.index(0)]
-                    return True, empty_cell_pos  # Found a winning pattern
+                    res = True
+                    empty_cell_positions.append(empty_cell_pos)
 
         # If we check all windows in all directions and find nothing, return False
-        return False, None
+        return res, empty_cell_positions
 
-    def check_obvious_move(self):
+    def check_obvious_moves(self):
         """
         Check for obvious moves that can block the opponent's winning chances.
         Returns the position of the moves that can block the opponent's direct winning move.
         """
-        obvious_move = None
+        obvious_moves = []
         opponent_turn = 1 - self.current_player
         # check for open four for opponent
-        win, empty_cell_pos = self.check_open_four(opponent_turn, self.move_history[-1] if self.move_history else None)
+        win, empty_cell_positions = self.check_open_four(opponent_turn, self.move_history[-1] if self.move_history else None)
         if win:
-            obvious_move = empty_cell_pos[0] * self.size + empty_cell_pos[1]
-        return obvious_move
+            for empty_cell_pos in empty_cell_positions:
+                obvious_move = empty_cell_pos[0] * self.size + empty_cell_pos[1]
+                obvious_moves.append(obvious_move)
+        return obvious_moves
 
     def get_winner_indirect(self):
         '''
@@ -203,9 +209,9 @@ class Game:
         # if the current player has the four in a row with at least one of the sides open, this player will win
         last_move_by_current_player = self.move_history[-2] if len(self.move_history) > 1 else None
         current_player = self.current_player
-        win, empty_cell_pos = self.check_open_four(current_player, last_move_by_current_player)
+        win, empty_cell_positions = self.check_open_four(current_player, last_move_by_current_player)
         if win:
-            return current_player, empty_cell_pos
+            return current_player, empty_cell_positions
 
         # Optional: detect draw
         if len(self.move_history) == self.size * self.size:

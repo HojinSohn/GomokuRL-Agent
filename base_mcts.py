@@ -1,3 +1,4 @@
+
 # Node class for Tree Search
 import random
 import numpy as np
@@ -11,7 +12,7 @@ Stone: 1 (player's stone) and -1 (opponent's stone)
 Turn: 0 and 1
 """
 class Node:
-    def __init__(self, current_turn, probability, parent=None, move=None):
+    def __init__(self, current_turn, parent=None, move=None):
         self.parent = parent
         self.children = []
         self.children_moves = set()  # Set to track moves of existing children for quick lookup
@@ -21,9 +22,6 @@ class Node:
         self.moves = (parent.moves + [move] if parent else [move]) if move is not None else []
         self.current_turn = current_turn
         self.is_terminal = False
-        self.probability = probability
-
-        self.punc_val = 3.0  # Exploration value
 
     def update(self, value_from_rollout):
         """ 
@@ -34,18 +32,38 @@ class Node:
 
     def get_value(self):
         """ 
-        Calculate the value of the node based on PUCT formula.
+        Calculate the value of the node based on UCB1.
         """
-        return -self.Q_value + self.punc_val * self.probability * np.sqrt(self.parent.visits) / (1 + self.visits)
+        return -self.Q_value + np.sqrt(2 * self.parent.visits) / (1 + self.visits)
 
 BOARD_SIZE = 9
-class MCTS:
-    def __init__(self, policy_value_network: PolicyValueNetwork, iterations=10000):
+class BaseMCTS:
+    def __init__(self, iterations=10000):
         """
         iterations: number of playouts (simulation) for one move
         """
-        self.policy_value_network = policy_value_network
         self.iterations = iterations
+
+    def rollout(self, game: Game, turn: int):
+        """
+        Perform a random rollout from the given board state.
+        """
+        current_turn = turn
+        game = copy.deepcopy(game)
+        while True:
+            winner, empty_cell_pos = game.get_winner_indirect()
+            if winner is not None:
+                return 1 if winner == current_turn else -1
+
+            # Get a list of all possible actions
+            possible_moves = game.get_legal_moves()
+            if not possible_moves:
+                return 0  # Draw
+
+            # Randomly select an action
+            move = random.choice(possible_moves)
+            game.do_move(move)
+            current_turn = 1 - current_turn
 
     def expand_node(self, node: Node, game: Game):
         """
@@ -53,19 +71,31 @@ class MCTS:
         """
         # Get action probabilities from the model for the current board state
         board = game.state[node.current_turn]
-        act_probs = self.policy_value_network.get_action_probs(board)
+        possible_moves = game.get_legal_moves()
         # print(f"[EXPAND_NODE] Expanding {node.move}, turn={node.current_turn}, got {len(act_probs)} moves")
-        if not act_probs:
+        if not possible_moves:
             print("Expand: No action is available")
             return None
+        
+        good_moves = []
+
+        for possible_move in possible_moves:
+            row, col = possible_move
+            if 1 <= row <= 7 and 1 <= col <= 7:
+                good_moves.append(possible_move)
+
+        if not good_moves:
+            good_moves = possible_moves
+        
         next_turn = 1 - node.current_turn
-        for action, prob in act_probs:
+        for move in good_moves:
+            action = move[0] * BOARD_SIZE + move[1]
             if action in node.children_moves:
                 continue
-            row, col = divmod(action, BOARD_SIZE)
+            row, col = move
             # print(f"   -> Creating child at {(row,col)} with prob={prob:.3f}")
             # Create a new child node for this action
-            child_node = Node(next_turn, prob, parent=node, move=(row, col))
+            child_node = Node(next_turn, parent=node, move=(row, col))
             # Add the child node to the current node's children
             node.children.append(child_node)
             node.children_moves.add(action)
@@ -89,8 +119,7 @@ class MCTS:
         # 2. EXPANSION
         if not node.children:
             # print(f"[EXPAND] Expanding node {node.move}, visits={node.visits}")
-            board = game.state[node.current_turn]
-            value = self.policy_value_network.get_state_value(board)
+            value = self.rollout(game, node.current_turn)
             self.expand_node(node, game)
             node.update(value)
             return -value # Return the negated value for the parent
@@ -108,6 +137,74 @@ class MCTS:
         # if abs(value) == 1:
         #     print(f"[TERMINAL] Node {best_child.move}, turn={node.current_turn}, value={value}, visits={node.visits}")
         return -value # Return the negated value for the parent
+    
+
+    def find_three_threats(self, game: Game, turn: int):
+        """
+        Finds all "three-threats" for a given player. This includes:
+        1. Open Threes:  _XXX_   (e.g., .OOO.)
+        2. Broken Threes: _X_XX_  (e.g., .O.OO.)
+        3. Broken Threes: _XX_X_  (e.g., .OO.O.)
+
+        Args:
+            board (np.ndarray): The game board, where -1 represents an empty spot.
+            player (int): The player to check for (e.g., 0 or 1).
+
+        Returns:
+            set: A set of (row, col) tuples for all empty spots that create an
+                "open four" when played.
+        """
+        BOARD_SIZE = 9
+        EMPTY = 0
+
+        board = game.state[turn]
+        player = 1
+        
+        # Using a set to automatically handle duplicate empty spots
+        threat_spots = set()
+
+        # Directions: horizontal, vertical, diagonal down-right, diagonal down-left
+        directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
+        
+        # --- Define all three threat patterns ---
+        # Pattern 1: Open Three (_XXX_)
+        p_open_three = [EMPTY, player, player, player, EMPTY]
+        
+        # Pattern 2: Broken Three (_X_XX_)
+        p_broken_three_A = [EMPTY, player, EMPTY, player, player, EMPTY]
+        
+        # Pattern 3: Broken Three (_XX_X_)
+        p_broken_three_B = [EMPTY, player, player, EMPTY, player, EMPTY]
+
+        for r in range(BOARD_SIZE):
+            for c in range(BOARD_SIZE):
+                for dr, dc in directions:
+                    # --- Check for Open Three (length 5 pattern) ---
+                    line_coords_5 = [(r + i * dr, c + i * dc) for i in range(5)]
+                    if all(0 <= nr < BOARD_SIZE and 0 <= nc < BOARD_SIZE for nr, nc in line_coords_5):
+                        line_values = [board[nr][nc] for nr, nc in line_coords_5]
+                        if line_values == p_open_three:
+                            # For _XXX_, both empty ends are threat spots
+                            threat_spots.add(line_coords_5[0])
+                            threat_spots.add(line_coords_5[4])
+
+                    # --- Check for Broken Threes (length 6 patterns) ---
+                    line_coords_6 = [(r + i * dr, c + i * dc) for i in range(6)]
+                    if all(0 <= nr < BOARD_SIZE and 0 <= nc < BOARD_SIZE for nr, nc in line_coords_6):
+                        line_values = [board[nr][nc] for nr, nc in line_coords_6]
+                        
+                        # Check for _X_XX_
+                        if line_values == p_broken_three_A:
+                            # The key empty spot is in the middle
+                            threat_spots.add(line_coords_6[2])
+                        
+                        # Check for _XX_X_
+                        elif line_values == p_broken_three_B:
+                            # The key empty spot is in the middle
+                            threat_spots.add(line_coords_6[3])
+
+        return threat_spots
+
 
     def get_action_probs(self, game: Game, turn: int):
         """
@@ -119,6 +216,8 @@ class MCTS:
 
         Game should have not been ended yet.
         """
+
+        print("Getting action probabilities from base MCTS")
         action_probs = np.zeros(BOARD_SIZE * BOARD_SIZE)
 
         # # the game should not be done, but it is possible to have indirect win here
@@ -137,9 +236,30 @@ class MCTS:
             # normalize
             action_probs /= action_probs.sum()
             return action_probs
+        
+        # check open three of current
+        open_three_moves = self.find_three_threats(game, turn)
+        if len(open_three_moves) > 0:
+            for move in open_three_moves:
+                action = move[0] * BOARD_SIZE + move[1]
+                action_probs[action] = 1.0
+            # normalize
+            action_probs /= action_probs.sum()
+            return action_probs
+        
+
+        # check open three of opponent
+        open_three_moves = self.find_three_threats(game, 1 - turn)
+        if len(open_three_moves) > 0:
+            for move in open_three_moves:
+                action = move[0] * BOARD_SIZE + move[1]
+                action_probs[action] = 1.0
+            # normalize
+            action_probs /= action_probs.sum()
+            return action_probs
 
         # print(f"[INFO] Starting MCTS for turn {turn}")
-        self.root = Node(turn, 1.0, parent=None, move=None)
+        self.root = Node(turn, parent=None, move=None)
 
         for _ in range(self.iterations):
             self.search(self.root, game)

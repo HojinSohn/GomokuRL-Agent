@@ -11,17 +11,21 @@ import torch
 from torch import nn
 import random
 from gui_play import GUI
+from base_mcts import BaseMCTS
 
 class Agent():
     """
     Agent class for managing the game-playing agent.
     """
-    def __init__(self, device=torch.device("cpu"), learning_rate=0.002, mcts_iterations=4000):
+    def __init__(self, device=torch.device("cpu"), learning_rate=0.002, mcts_iterations=4000, base_mcts=False):
         self.device = device
 
         self.policy_value_network = PolicyValueNetwork(device=device, learning_rate=learning_rate)
 
         self.mcts = MCTS(self.policy_value_network, iterations=mcts_iterations)
+
+        self.base_mcts = BaseMCTS(iterations=mcts_iterations)
+        self.use_base_mcts = base_mcts
 
         self.memory = deque(maxlen=10000)  # Memory to store samples
 
@@ -37,8 +41,11 @@ class Agent():
         It will call get action from MCTS class by passing the current state and model (based on turn).
         When the probability distribution of moves is returned, it will sample an action based on the probabilities.
         """
-        # Get the action probabilities from MCTS
-        mcts_action_probs = self.mcts.get_action_probs(game, turn)
+        if self.use_base_mcts:
+            # Get the action probabilities from MCTS
+            mcts_action_probs = self.base_mcts.get_action_probs(game, turn)
+        else:
+            mcts_action_probs = self.mcts.get_action_probs(game, turn)
 
         # normalize in case for imprecision
         mcts_action_probs = mcts_action_probs / np.sum(mcts_action_probs)
