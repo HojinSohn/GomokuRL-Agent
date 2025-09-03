@@ -36,14 +36,15 @@ The neural network plays two key roles in the learning pipeline:
 This creates a feedback loop 🔄:  
 - **Better networks** guide **better self-play**.  
 - **Better self-play** produces **better training data**.  
-- Over time, the agent improves without any human examples.  
+- Over time, the agent improves without any human examples.
+  
+## 🎮 Demo  
 
-## Demo  
-Black: MCTS with the trained Neural Network
-White: MCTS with heurisitc good move detection
-Both ran 4000 iterations for each move.
+- **Black**: MCTS guided by the trained Neural Network  
+- **White**: MCTS with heuristic-based move selection  
+- Both agents ran **4,000 iterations per move**  
 
-![Watch the demo](./images/agent-vs-heuristicMCTS.gif)
+![Demo](./images/agent-vs-heuristicMCTS.gif)
 
 Due to limited computational resources (no dedicated GPU), I eventually stopped large-scale training.  
 However, even in the early stages of training, I could observe the model **gradually improving its gameplay** through self-play training.  
