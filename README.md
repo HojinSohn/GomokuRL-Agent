@@ -48,6 +48,12 @@ This creates a feedback loop 🔄:
 
 Even without explicit open-three detection, **Black** is able to recognize both offensive and defensive opportunities. In this game, Black won by making a strategic **4-3 move**, creating an open four and an open three simultaneously.
 
+## Plots
+
+![Plots](./images/plots.png)
+
+Even with a limited number of training iterations, the decreasing trend in the loss curves, especially policy loss, shows that the model is steadily learning and enhancing its decision-making process.
+
 ## Limitations
 
 Due to limited computational resources (no dedicated GPU), I eventually stopped large-scale training.  
