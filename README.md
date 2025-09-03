@@ -46,5 +46,9 @@ This creates a feedback loop 🔄:
 
 ![Demo](./images/agent-vs-heuristicMCTS.gif)
 
+Even without explicit open-three detection, **Black** is able to recognize both offensive and defensive opportunities. In this game, Black won by making a strategic **4-3 move**, creating an open four and an open three simultaneously.
+
+## Limitations
+
 Due to limited computational resources (no dedicated GPU), I eventually stopped large-scale training.  
 However, even in the early stages of training, I could observe the model **gradually improving its gameplay** through self-play training.  
