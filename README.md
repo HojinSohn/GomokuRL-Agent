@@ -38,6 +38,11 @@ This creates a feedback loop 🔄:
 - **Better self-play** produces **better training data**.  
 - Over time, the agent improves without any human examples.  
 
+## Demo  
+Black: MCTS with the trained Neural Network
+White: MCTS with heurisitc good move detection
+Both ran 4000 iterations for each move.
+
 ![Watch the demo](./images/agent-vs-heuristicMCTS.gif)
 
 Due to limited computational resources (no dedicated GPU), I eventually stopped large-scale training.  
